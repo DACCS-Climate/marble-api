@@ -31,6 +31,7 @@ def add_fallback_routes(app_: FastAPI, previous_version: FastAPI) -> None:
 
 def last_version() -> "Callable":
     """Indicate that the decorated route should not be included in subsequent versions."""
+
     def _(func: "Callable") -> "Callable":
         func._last_version = True
         return func
