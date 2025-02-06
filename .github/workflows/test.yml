@@ -1,0 +1,24 @@
+name: Unit tests
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+jobs:
+  test:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    strategy:
+        matrix:
+            python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up python version ${{ matrix.python-version }} for testing
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+      - name: Install python test dependencies
+        run: |
+          pip install requirements.test.txt
+      - name: Test with pytest
+        run: |
+          pytest ./test/
