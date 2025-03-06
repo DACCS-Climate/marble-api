@@ -11,14 +11,35 @@ class DataRequestBase(SQLModel):
     This object contains field validators.
     """
 
-    @field_validator("title", check_fields=False)
-    def validate_title(cls, title: str) -> str:
-        """Check that the title field does not have a space in it."""
-        if title and " " in title:
-            raise ValueError("title cannot contain space characters")
-        return title
-
-    # TODO: add additional validators here
+    @field_validator("start_date","end_date", check_fields=False)
+    def validate_timeperiod(cls, start_date: datetime, end_date: datetime) -> datetime:
+        """Check that the time periods are correct"""
+        if end_date < start_date:
+            raise ValueError("End date can not be earlier than start date")
+        return start_date, end_date
+    
+    @field_validator("longitude", "latitude", "myFile", check_fields=False)
+    def validate_title(cls, latitude: str, longitude: str, myFile:str) -> str:
+        """Ensure list lengths match"""
+        if len(latitude) != len(longitude):
+            raise ValueError("Latitude and longitude lists are different lengths")
+        """If there is no latitude and longitude, make sure there is a GeoJSON"""
+        if latitude == None:
+            if myFile == None:
+                raise ValueError("Must include either GeoJSON file or manually inputted latitude and longitudes")
+        """Check latitude and longitude ranges"""
+        for i in latitude:
+            if i > 90:
+                raise ValueError("Latitudes must be between -90 and 90 degrees")
+            if i < -90: 
+                raise ValueError("Latitudes must be between -90 and 90 degrees")
+        for i in longitude:
+            if i > 180:
+                raise ValueError("Longitudes must be between -180 and 180 degrees")
+            if i < -180: 
+                raise ValueError("Longitudes must be between -180 and 180 degrees") 
+        
+        return latitude, longitude, myFile
 
 
 class DataRequest(DataRequestBase, table=True):
@@ -27,13 +48,25 @@ class DataRequest(DataRequestBase, table=True):
 
     This object contains the representation of the data in the database.
     """
-
     id: int | None = Field(default=None, primary_key=True)
+    username: str
     title: str
-    desc: str
-    date: datetime
-    # TODO: add more parameters
-
+    desc: str | None
+    fname: str
+    lname: str
+    email: str
+    geometry: str
+    latitude: str | None
+    longitude: str | None
+    myFile: str | None
+    start_date: datetime
+    end_date: datetime
+    variables: str | None
+    models: str | None
+    path: str
+    input: str | None
+    link: str | None
+    
 
 class DataRequestPublic(DataRequestBase):
     """
@@ -44,11 +77,23 @@ class DataRequestPublic(DataRequestBase):
     be included in this object.
     """
 
-    id: int
+    id: int | None = Field(default=None, primary_key=True)
     title: str
-    desc: str
-    date: datetime
-    # TODO: copy any parameters from DataRequest that should be visible to the user here
+    desc: str | None
+    fname: str
+    lname: str
+    email: str
+    geometry: str
+    latitude: str | None
+    longitude: str | None
+    myFile: str | None
+    start_date: datetime
+    end_date: datetime
+    variables: str | None
+    models: str | None
+    path: str
+    input: str | None
+    link: str | None
 
 
 class DataRequestUpdate(DataRequestBase):
