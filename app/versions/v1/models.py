@@ -1,7 +1,7 @@
 from datetime import datetime
 
-from pydantic import field_validator
-from sqlmodel import Field, SQLModel
+from pydantic import model_validator
+from sqlmodel import JSON, Column, Field, SQLModel
 
 
 class DataRequestBase(SQLModel):
@@ -11,35 +11,29 @@ class DataRequestBase(SQLModel):
     This object contains field validators.
     """
 
-    @field_validator("start_date","end_date", check_fields=False)
-    def validate_timeperiod(cls, start_date: datetime, end_date: datetime) -> datetime:
-        """Check that the time periods are correct"""
-        if end_date < start_date:
+    @model_validator(mode="after")
+    def validate_timeperiod(self) -> "DataRequestBase":
+        """Check that the time periods are correct."""
+        if self.end_date < self.start_date:
             raise ValueError("End date can not be earlier than start date")
-        return start_date, end_date
-    
-    @field_validator("longitude", "latitude", "myFile", check_fields=False)
-    def validate_title(cls, latitude: str, longitude: str, myFile:str) -> str:
-        """Ensure list lengths match"""
-        if len(latitude) != len(longitude):
+        return self
+
+    @model_validator(mode="after")
+    def validate_geographic_extent(self) -> "DataRequestBase":
+        """Ensure list lengths match."""
+        if len(self.latitude) != len(self.longitude):
             raise ValueError("Latitude and longitude lists are different lengths")
         """If there is no latitude and longitude, make sure there is a GeoJSON"""
-        if latitude == None:
-            if myFile == None:
-                raise ValueError("Must include either GeoJSON file or manually inputted latitude and longitudes")
+        if not self.latitude and not self.myFile:
+            raise ValueError("Must include either GeoJSON file or manually inputted latitude and longitudes")
         """Check latitude and longitude ranges"""
-        for i in latitude:
-            if i > 90:
+        for i in self.latitude:
+            if i > 90 or i < -90:
                 raise ValueError("Latitudes must be between -90 and 90 degrees")
-            if i < -90: 
-                raise ValueError("Latitudes must be between -90 and 90 degrees")
-        for i in longitude:
-            if i > 180:
+        for i in self.longitude:
+            if i > 180 or i < -180:
                 raise ValueError("Longitudes must be between -180 and 180 degrees")
-            if i < -180: 
-                raise ValueError("Longitudes must be between -180 and 180 degrees") 
-        
-        return latitude, longitude, myFile
+        return self
 
 
 class DataRequest(DataRequestBase, table=True):
@@ -48,6 +42,7 @@ class DataRequest(DataRequestBase, table=True):
 
     This object contains the representation of the data in the database.
     """
+
     id: int | None = Field(default=None, primary_key=True)
     username: str
     title: str
@@ -56,8 +51,8 @@ class DataRequest(DataRequestBase, table=True):
     lname: str
     email: str
     geometry: str
-    latitude: str | None
-    longitude: str | None
+    latitude: list[float] = Field(default=[], sa_column=Column(JSON))
+    longitude: list[float] = Field(default=[], sa_column=Column(JSON))
     myFile: str | None
     start_date: datetime
     end_date: datetime
@@ -66,7 +61,7 @@ class DataRequest(DataRequestBase, table=True):
     path: str
     input: str | None
     link: str | None
-    
+
 
 class DataRequestPublic(DataRequestBase):
     """
@@ -77,15 +72,15 @@ class DataRequestPublic(DataRequestBase):
     be included in this object.
     """
 
-    id: int | None = Field(default=None, primary_key=True)
+    id: int
     title: str
     desc: str | None
     fname: str
     lname: str
     email: str
     geometry: str
-    latitude: str | None
-    longitude: str | None
+    latitude: list[float]
+    longitude: list[float]
     myFile: str | None
     start_date: datetime
     end_date: datetime
