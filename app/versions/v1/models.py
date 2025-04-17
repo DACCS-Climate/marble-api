@@ -1,7 +1,11 @@
 from datetime import datetime
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from sqlmodel import Field, SQLModel
+from fastapi import FastAPI
+from typing import List
+
+app = FastAPI(version="1")
 
 
 class DataRequestBase(SQLModel):
@@ -10,37 +14,44 @@ class DataRequestBase(SQLModel):
 
     This object contains field validators.
     """
+    start_date: datetime
+    end_date: datetime
 
-    @field_validator("start_date","end_date", check_fields=False)
-    def validate_timeperiod(cls, start_date: datetime, end_date: datetime) -> datetime:
-        """Check that the time periods are correct"""
-        if end_date < start_date:
-            raise ValueError("End date can not be earlier than start date")
-        return start_date, end_date
+    @model_validator(mode="before")
+    def validate_timeperiod(cls, values):
+        start_time = values.__dict__.get("start_date")
+        end_time = values.__dict__.get("end_date")
+        try:
+            if isinstance(start_time, str):
+                start_time = datetime.fromisoformat(start_time)
+            if isinstance(end_time, str):
+                end_time = datetime.fromisoformat(end_time)
+        except ValueError as e:
+            raise ValueError(f"Invalid date format: {e}")
+        # Check if the end date is earlier than the start date
+        if end_time < start_time:
+            raise ValueError("End date cannot be earlier than start date.")
+
+        return values  # Does nothing, just returns the values as they are
     
-    @field_validator("longitude", "latitude", "myFile", check_fields=False)
-    def validate_title(cls, latitude: str, longitude: str, myFile:str) -> str:
-        """Ensure list lengths match"""
-        if len(latitude) != len(longitude):
-            raise ValueError("Latitude and longitude lists are different lengths")
+    @model_validator(mode="before")
+    def validate_location(cls, values):
+        """Ensure list lengths match and check latitude/longitude validity."""
+        lat = values.__dict__.get("latitude")
+        lon = values.__dict__.get("longitude")
+        file = values.__dict__.get("myFile")
+        """Ensure list lengths match."""
+        #if len(latitude) != len(longitude):
+        #    raise ValueError("Latitude and longitude lists are different lengths")
         """If there is no latitude and longitude, make sure there is a GeoJSON"""
-        if latitude == None:
-            if myFile == None:
-                raise ValueError("Must include either GeoJSON file or manually inputted latitude and longitudes")
+        if lat is None and file is None:
+            raise ValueError("Must include either GeoJSON file or manually inputted latitude and longitudes")
         """Check latitude and longitude ranges"""
-        for i in latitude:
-            if i > 90:
-                raise ValueError("Latitudes must be between -90 and 90 degrees")
-            if i < -90: 
-                raise ValueError("Latitudes must be between -90 and 90 degrees")
-        for i in longitude:
-            if i > 180:
-                raise ValueError("Longitudes must be between -180 and 180 degrees")
-            if i < -180: 
-                raise ValueError("Longitudes must be between -180 and 180 degrees") 
-        
-        return latitude, longitude, myFile
-
+        if lat > 90 or lat < -90:
+           raise ValueError("Latitudes must be between -90 and 90 degrees")
+        if lon > 180 or lon < -180:
+           raise ValueError("Latitudes must be between -90 and 90 degrees")
+        return values
 
 class DataRequest(DataRequestBase, table=True):
     """
@@ -48,6 +59,7 @@ class DataRequest(DataRequestBase, table=True):
 
     This object contains the representation of the data in the database.
     """
+
     id: int | None = Field(default=None, primary_key=True)
     username: str
     title: str
@@ -66,7 +78,7 @@ class DataRequest(DataRequestBase, table=True):
     path: str
     input: str | None
     link: str | None
-    
+
 
 class DataRequestPublic(DataRequestBase):
     """
@@ -77,15 +89,16 @@ class DataRequestPublic(DataRequestBase):
     be included in this object.
     """
 
-    id: int | None = Field(default=None, primary_key=True)
+    id: int
+    username: str
     title: str
     desc: str | None
     fname: str
     lname: str
     email: str
     geometry: str
-    latitude: str | None
-    longitude: str | None
+    latitude: str  | None
+    longitude: str  | None
     myFile: str | None
     start_date: datetime
     end_date: datetime
@@ -104,7 +117,20 @@ class DataRequestUpdate(DataRequestBase):
     Fields should be optional unless they *must* be updated every time a change is made.
     """
 
+    username: str | None = None
     title: str | None = None
     desc: str | None = None
-    date: datetime | None = None
-    # TODO: make sure parameters added in DataRequest are made optional here
+    fname: str | None = None
+    lname: str | None = None
+    email: str | None = None
+    geometry: str | None = None
+    latitude: str | None = None
+    longitude: str | None = None
+    myFile: str | None = None
+    start_date: datetime | None = None
+    end_date: datetime | None = None
+    variables: str | None = None
+    models: str | None = None
+    path: str | None = None
+    input: str | None = None
+    link: str | None = None
