@@ -15,19 +15,10 @@ async def post_data_request(
     data_request: Annotated[DataRequest, AfterValidator(DataRequest.model_validate)], session: SessionDep
 ) -> DataRequestPublic:
     """Create a new data request and return the newly created data request."""
-    try:
-        session.add(data_request)
-        session.commit()
-        session.refresh(data_request)
-        return data_request
-    except Exception as e:
-        session.rollback()
-        raise HTTPException(status_code=500, detail="Internal Server Error")
-    
-    #session.add(data_request)
-    #session.commit()
-    #session.refresh(data_request)
-    #return data_request
+    session.add(data_request)
+    session.commit()
+    session.refresh(data_request)
+    return data_request
 
 
 @app.patch("/data-publish-request/{request_id}")
