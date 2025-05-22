@@ -7,9 +7,6 @@ import ast
 from fastapi import FastAPI
 from typing import List, Optional
 
-
-app = FastAPI(version="1")
-
 class DataRequestBase(SQLModel):
     """
     SQL model base object for Data Requests.
@@ -19,28 +16,29 @@ class DataRequestBase(SQLModel):
     start_date: datetime
     end_date: datetime
 
-    @model_validator(mode="before")
+    @model_validator(mode="after")
     def validate_timeperiod(cls, values):
-        start_time = values.__dict__.get("start_date")
-        end_time = values.__dict__.get("end_date")
-        try:
-            if isinstance(start_time, str):
-                start_time = datetime.fromisoformat(start_time)
-            if isinstance(end_time, str):
-                end_time = datetime.fromisoformat(end_time)
-        except ValueError as e:
-            raise ValueError(f"Invalid date format: {e}")
+        start_time = self.get("start_date")
+        end_time = self.get("end_date")
+        # try:
+        #     if isinstance(start_time, str):
+        #         start_time = datetime.fromisoformat(start_time)
+        #     if isinstance(end_time, str):
+        #         end_time = datetime.fromisoformat(end_time)
+        # except ValueError as e:
+        #     raise ValueError(f"Invalid date format: {e}")
         # Check if the end date is earlier than the start date
         if end_time < start_time:
             raise ValueError("End date cannot be earlier than start date.")
 
         return values  # Does nothing, just returns the values as they are
     
-    @model_validator(mode="before")
+    @model_validator(mode="after")
     def validate_location(cls, values):
         """Ensure list lengths match and check latitude/longitude validity."""
-        lat = ast.literal_eval(values.__dict__.get("latitude"))
-        lon = ast.literal_eval(values.__dict__.get("longitude"))
+        #json list
+        lat = json.loads(self.get("latitude"))
+        lon = json.loads(self.get("longitude"))
         file = values.__dict__.get("myFile")
         """Ensure list lengths match."""
         #if len(latitude) != len(longitude):
@@ -68,15 +66,15 @@ class DataRequest(DataRequestBase, table=True):
     username: str
     title: str
     desc: str | None
-    authorFNames: str
+    authorFNames: str #add check auhor1
     authorLNames: str
     authorEmails: str
     geometry: str
     latitude: str | None
     longitude: str | None
     myFile: str | None
-    start_date: str | None
-    end_date: str | None
+    start_date: datetime | None
+    end_date: datetime | None
     variables: str | None
     models: str | None
     path: str
@@ -104,8 +102,8 @@ class DataRequestPublic(DataRequestBase):
     latitude: str | None
     longitude: str | None
     myFile: str | None
-    start_date: str | None
-    end_date: str | None
+    start_date: datetime | None
+    end_date: datetime | None
     variables: str | None
     models: str | None
     path: str
@@ -131,8 +129,8 @@ class DataRequestUpdate(DataRequestBase):
     latitude: str | None = None
     longitude: str | None = None
     myFile: str | None = None
-    start_date: str | None = None
-    end_date: str | None = None
+    start_date: datetime | None = None
+    end_date: datetime | None = None
     variables: str | None = None
     models: str | None = None
     path: str | None = None
