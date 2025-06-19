@@ -6,6 +6,7 @@ from sqlmodel import select
 
 from app.database import SessionDep
 from app.versions.v1.models import DataRequest, DataRequestPublic, DataRequestUpdate
+import geojson as gj
 
 app = FastAPI(version="1")
 
@@ -37,9 +38,47 @@ async def patch_data_request(
 
 
 @app.get("/data-publish-request/{request_id}")
-async def get_data_request(request_id: str, session: SessionDep) -> DataRequestPublic:
+async def get_data_request(request_id: str, session: SessionDep, stac: bool = False) -> DataRequestPublic:
     """Get a data request with the given request_id."""
     request = session.get(DataRequest, request_id)
+    if stac:
+        request = {
+        #generate footprint and bbox from geometry
+        #STAC item time (creation time)
+        datetime_utc = datetime.now(tz=timezone.utc)
+        #code to convert to a STAC item
+        item = pystac.Item(id=id,
+                 geometry=myfile,
+                 bbox= gj.bbox_get(myfile),
+                 datetime=datetime_utc,
+                 properties={})
+        item_properties = {
+            "title": title,
+            "description": desc,
+            "authors_firstname": authorFNames,
+            "authors_lastname": authorLNames,
+            # date
+            "start_datetime": start_date,
+            "end_datetime": end_date,
+            "created": fdict["date"],
+            # variables
+            "variables": variables,
+            # models
+            "models": models,
+            "item_links": [{
+                "rel": "self",
+                "href": path
+            },
+                {
+                    "rel": "derived_from",
+                    "href": input
+                },
+                {
+                    "rel": "linked_files",
+                    "href": link
+                }]
+        }
+        }
     if not request:
         raise HTTPException(status_code=404, detail="data publish request not found")
     return request
