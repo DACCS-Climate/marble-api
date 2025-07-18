@@ -45,7 +45,7 @@ async def get_data_request(request_id: str, session: SessionDep, stac: bool = Fa
         request = {
         #STAC item time (creation time)
         datetime_utc = datetime.now(tz=timezone.utc)
-        #code to convert to a STAC item
+        #Create list of custom item properties (other than geometry and time), which will be added to the STAC item
         item_properties = {
             "title": title,
             "description": desc,
@@ -72,7 +72,7 @@ async def get_data_request(request_id: str, session: SessionDep, stac: bool = Fa
                     "href": link
                 }]
         }
-        #generate bbox from geometry
+        #generate bbox from geometry, in the case of a simple geometry where user did not provide GeoJSON geometry input
         if myFile == None:
             if geomtery == Point:
                 myfile = {
@@ -85,32 +85,63 @@ async def get_data_request(request_id: str, session: SessionDep, stac: bool = Fa
                     "coordinates": [[latitude[0], longitude[0]]]
                     }
                 for i in range(1, len(latitude)):
-                    myFile['coordinates'].append([latitude[i], longitude[i]])
-        else:
-            if geomtery == Point:
-                shape = gbbox.Point(**geometry)
-                geobbox = shape.bbox()
-            if geomtery == Line:
-                shape = gbbox.Line(**geometry)
-                geobbox = shape.bbox()
-            if geomtery == LineString:
-                shape = gbbox.LineString(**geometry)
-                geobbox = shape.bbox()
-            if geomtery == MultiLineString:
-                shape = gbbox.MultiLineString(**geometry)
-                geobbox = shape.bbox()
-            if geomtery == Polygon:
-                shape = gbbox.Polygon(**geometry)
-                geobbox = shape.bbox()
-            if geomtery == MultiPolygon:
-                shape = gbbox.MultiPolygon(**geometry)
-                geobbox = shape.bbox()
-        #generate footprint and bbox from geometry
-        item = pystac.Item(id=id,
+                    myfile['coordinates'].append([latitude[i], longitude[i]])
+            if geometry == LineString:
+                myfile = {
+                    "type": "LineString",
+                    "coordinates": [[latitude[0], longitude[0]]]
+                    }
+                for i in range(1, len(latitude)):
+                    myfile['coordinates'].append([latitude[i], longitude[i]])
+            if geometry == MultiPoint:
+                myfile = {
+                    "type": "MultiPoint",
+                    "coordinates": [[latitude[0], longitude[0]]]
+                    }
+                for i in range(1, len(latitude)):
+                    myfile['coordinates'].append([latitude[i], longitude[i]])
+            if geometry == Polygon:
+                myfile = {
+                    "type": "Polygon",
+                    "coordinates": [[latitude[0], longitude[0]]]
+                    }
+                for i in range(1, len(latitude)):
+                    myfile['coordinates'].append([latitude[i], longitude[i]])
+        #Now that each file has a GeoJSON geometry feature (either user inputted or generated above), use gbbox package to generate gbbox
+        if geomtery == Point:
+            shape = gbbox.Point(**myfile)
+            geobbox = shape.bbox()
+        if geomtery == Line:
+            shape = gbbox.Line(**myfile)
+            geobbox = shape.bbox()
+        if geomtery == LineString:
+            shape = gbbox.LineString(**myfile)
+            geobbox = shape.bbox()
+        if geomtery == MultiLineString:
+            shape = gbbox.MultiLineString(**myfile)
+            geobbox = shape.bbox()
+        if geomtery == Polygon:
+            shape = gbbox.Polygon(**myfile)
+            geobbox = shape.bbox()
+        if geomtery == MultiPolygon:
+            shape = gbbox.MultiPolygon(**myfile)
+            geobbox = shape.bbox()
+        if geometry == GeometryCollection:
+            shape = gbbox.GeometryCollection(**myfile)
+            geobbox = shape.bbox()           
+        #Create STAC item (null case and regular case)
+        if geometry == null:
+            item = pystac.Item(id=id,
+                 geometry = null,
+                 datetime=datetime_utc,
+                 properties=item_properties)
+        elif geometry != null:
+            item = pystac.Item(id=id,
                  geometry = myfile,
                  bbox = geobbox,
                  datetime=datetime_utc,
                  properties=item_properties)
+        }
     if not request:
         raise HTTPException(status_code=404, detail="data publish request not found")
     return request
