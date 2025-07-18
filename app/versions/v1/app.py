@@ -6,7 +6,7 @@ from sqlmodel import select
 
 from app.database import SessionDep
 from app.versions.v1.models import DataRequest, DataRequestPublic, DataRequestUpdate
-import geojson as gj
+import gbbox
 
 app = FastAPI(version="1")
 
@@ -43,15 +43,9 @@ async def get_data_request(request_id: str, session: SessionDep, stac: bool = Fa
     request = session.get(DataRequest, request_id)
     if stac:
         request = {
-        #generate footprint and bbox from geometry
         #STAC item time (creation time)
         datetime_utc = datetime.now(tz=timezone.utc)
         #code to convert to a STAC item
-        item = pystac.Item(id=id,
-                 geometry=myfile,
-                 bbox= gj.bbox_get(myfile),
-                 datetime=datetime_utc,
-                 properties={})
         item_properties = {
             "title": title,
             "description": desc,
@@ -78,7 +72,45 @@ async def get_data_request(request_id: str, session: SessionDep, stac: bool = Fa
                     "href": link
                 }]
         }
-        }
+        #generate bbox from geometry
+        if myFile == None:
+            if geomtery == Point:
+                myfile = {
+                    "type": "Point",
+                    "coordinates": [latitude, longitude]
+                    }
+            if geometry == Line:
+                myfile = {
+                    "type": "Point",
+                    "coordinates": [[latitude[0], longitude[0]]]
+                    }
+                for i in range(1, len(latitude)):
+                    myFile['coordinates'].append([latitude[i], longitude[i]])
+        else:
+            if geomtery == Point:
+                shape = gbbox.Point(**geometry)
+                geobbox = shape.bbox()
+            if geomtery == Line:
+                shape = gbbox.Line(**geometry)
+                geobbox = shape.bbox()
+            if geomtery == LineString:
+                shape = gbbox.LineString(**geometry)
+                geobbox = shape.bbox()
+            if geomtery == MultiLineString:
+                shape = gbbox.MultiLineString(**geometry)
+                geobbox = shape.bbox()
+            if geomtery == Polygon:
+                shape = gbbox.Polygon(**geometry)
+                geobbox = shape.bbox()
+            if geomtery == MultiPolygon:
+                shape = gbbox.MultiPolygon(**geometry)
+                geobbox = shape.bbox()
+        #generate footprint and bbox from geometry
+        item = pystac.Item(id=id,
+                 geometry = myfile,
+                 bbox = geobbox,
+                 datetime=datetime_utc,
+                 properties=item_properties)
     if not request:
         raise HTTPException(status_code=404, detail="data publish request not found")
     return request
