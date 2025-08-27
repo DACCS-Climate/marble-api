@@ -7,6 +7,10 @@ from sqlmodel import select
 from app.database import SessionDep
 from app.versions.v1.models import DataRequest, DataRequestPublic, DataRequestUpdate
 import gbbox
+from shapely.geometry import shape as shp
+import json
+from datetime import datetime, timezone
+import pystac
 
 app = FastAPI(version="1")
 
@@ -20,7 +24,6 @@ async def post_data_request(
     session.commit()
     session.refresh(data_request)
     return data_request
-
 
 @app.patch("/data-publish-request/{request_id}")
 async def patch_data_request(
@@ -36,116 +39,109 @@ async def patch_data_request(
     session.refresh(data_request)
     return data_request
 
-
 @app.get("/data-publish-request/{request_id}")
 async def get_data_request(request_id: str, session: SessionDep, stac: bool = False) -> DataRequestPublic:
     """Get a data request with the given request_id."""
-    request = session.get(DataRequest, request_id)
+    data_request = session.get(DataRequest, request_id)
     if stac:
-        request = {
         #STAC item time (creation time)
         datetime_utc = datetime.now(tz=timezone.utc)
         #Create list of custom item properties (other than geometry and time), which will be added to the STAC item
         item_properties = {
-            "title": title,
-            "description": desc,
-            "authors_firstname": authorFNames,
-            "authors_lastname": authorLNames,
+            "title": data_request.title,
+            "description": data_request.desc,
+            "authors_firstname": data_request.authorFNames,
+            "authors_lastname": data_request.authorLNames,
             # date
-            "start_datetime": start_date,
-            "end_datetime": end_date,
-            "created": fdict["date"],
+            "start_datetime": data_request.start_date,
+            "end_datetime": data_request.end_date,
             # variables
-            "variables": variables,
+            "variables": data_request.variables,
             # models
-            "models": models,
+            "models": data_request.models,
             "item_links": [{
                 "rel": "self",
-                "href": path
+                "href": data_request.path
             },
                 {
                     "rel": "derived_from",
-                    "href": input
+                    "href": data_request.input
                 },
                 {
                     "rel": "linked_files",
-                    "href": link
+                    "href": data_request.link
                 }]
         }
         #generate bbox from geometry, in the case of a simple geometry where user did not provide GeoJSON geometry input
-        if myFile == None:
-            if geomtery == Point:
+        myfile = data_request.myFile
+        if data_request.myFile == "":
+            latitude = json.loads(data_request.latitude)
+            longitude = json.loads(data_request.longitude)
+            if data_request.geometry == "Point":
                 myfile = {
                     "type": "Point",
-                    "coordinates": [latitude, longitude]
+                    "coordinates": [data_request.latitude, data_request.longitude]
                     }
-            if geometry == Line:
-                myfile = {
-                    "type": "Point",
-                    "coordinates": [[latitude[0], longitude[0]]]
-                    }
-                for i in range(1, len(latitude)):
-                    myfile['coordinates'].append([latitude[i], longitude[i]])
-            if geometry == LineString:
+            if data_request.geometry == "LineString":
                 myfile = {
                     "type": "LineString",
                     "coordinates": [[latitude[0], longitude[0]]]
                     }
                 for i in range(1, len(latitude)):
                     myfile['coordinates'].append([latitude[i], longitude[i]])
-            if geometry == MultiPoint:
+            if data_request.geometry == "MultiPoint":
                 myfile = {
                     "type": "MultiPoint",
-                    "coordinates": [[latitude[0], longitude[0]]]
+                    "coordinates": [[data_request.latitude[0], data_request.longitude[0]]]
                     }
-                for i in range(1, len(latitude)):
-                    myfile['coordinates'].append([latitude[i], longitude[i]])
-            if geometry == Polygon:
+                for i in range(1, len(data_request.latitude)):
+                    myfile['coordinates'].append([data_request.latitude[i], data_request.longitude[i]])
+            if data_request.geometry == "Polygon":
                 myfile = {
                     "type": "Polygon",
-                    "coordinates": [[latitude[0], longitude[0]]]
+                    "coordinates": [[data_request.latitude[0], data_request.longitude[0]]]
                     }
-                for i in range(1, len(latitude)):
-                    myfile['coordinates'].append([latitude[i], longitude[i]])
+                for i in range(1, len(data_request.latitude)):
+                    myfile['coordinates'].append([data_request.latitude[i], data_request.longitude[i]])
         #Now that each file has a GeoJSON geometry feature (either user inputted or generated above), use gbbox package to generate gbbox
-        if geomtery == Point:
+        if data_request.geometry == "Point":
             shape = gbbox.Point(**myfile)
             geobbox = shape.bbox()
-        if geomtery == Line:
-            shape = gbbox.Line(**myfile)
-            geobbox = shape.bbox()
-        if geomtery == LineString:
+        if data_request.geometry == "Line":
+            geom = shp(myfile)
+            geobbox = geom.bounds
+        if data_request.geometry == "LineString":
             shape = gbbox.LineString(**myfile)
             geobbox = shape.bbox()
-        if geomtery == MultiLineString:
+        if data_request.geometry == "MultiLineString":
             shape = gbbox.MultiLineString(**myfile)
             geobbox = shape.bbox()
-        if geomtery == Polygon:
+        if data_request.geometry == "Polygon":
             shape = gbbox.Polygon(**myfile)
             geobbox = shape.bbox()
-        if geomtery == MultiPolygon:
+        if data_request.geometry == "MultiPolygon":
             shape = gbbox.MultiPolygon(**myfile)
             geobbox = shape.bbox()
-        if geometry == GeometryCollection:
+        if data_request.geometry == "GeometryCollection":
             shape = gbbox.GeometryCollection(**myfile)
             geobbox = shape.bbox()           
         #Create STAC item (null case and regular case)
-        if geometry == null:
+        if data_request.geometry == "null":
             item = pystac.Item(id=id,
                  geometry = null,
                  datetime=datetime_utc,
                  properties=item_properties)
-        elif geometry != null:
+        elif data_request.geometry != "null":
             item = pystac.Item(id=id,
                  geometry = myfile,
                  bbox = geobbox,
                  datetime=datetime_utc,
                  properties=item_properties)
-        }
-    if not request:
+        return item.to_dict() #CHECK WORKING
+    if not data_request:
         raise HTTPException(status_code=404, detail="data publish request not found")
-    return request
-
+    #return request if not stac
+    return data_request
 
 class _LinksResponse(BaseModel):
     rel: str

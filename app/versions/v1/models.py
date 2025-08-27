@@ -13,47 +13,37 @@ class DataRequestBase(SQLModel):
 
     This object contains field validators.
     """
-    start_date: datetime
-    end_date: datetime
+    start_date: str
+    end_date: str
 
     @model_validator(mode="after")
     def validate_timeperiod(cls, values):
-        start_time = self.get("start_date")
-        end_time = self.get("end_date")
-        # try:
-        #     if isinstance(start_time, str):
-        #         start_time = datetime.fromisoformat(start_time)
-        #     if isinstance(end_time, str):
-        #         end_time = datetime.fromisoformat(end_time)
-        # except ValueError as e:
-        #     raise ValueError(f"Invalid date format: {e}")
-        # Check if the end date is earlier than the start date
-        if end_time < start_time:
+        if values.__dict__.get("end_date") < values.__dict__.get("start_date"):
             raise ValueError("End date cannot be earlier than start date.")
 
         return values  # Does nothing, just returns the values as they are
     
-    @model_validator(mode="after")
+"""     @model_validator(mode="after")
     def validate_location(cls, values):
-        """Ensure list lengths match and check latitude/longitude validity."""
+        #Ensure list lengths match and check latitude/longitude validity.
         #json list
-        lat = json.loads(self.get("latitude"))
-        lon = json.loads(self.get("longitude"))
+        lat = json.loads(values.__dict__.get("latitude"))
+        lon = json.loads(values.__dict__.get("longitude"))
         file = values.__dict__.get("myFile")
-        """Ensure list lengths match."""
+        #Ensure list lengths match.
         #if len(latitude) != len(longitude):
         #    raise ValueError("Latitude and longitude lists are different lengths")
-        """If there is no latitude and longitude, make sure there is a GeoJSON"""
+        #If there is no latitude and longitude, make sure there is a GeoJSON
         if lat is None and file is None:
             raise ValueError("Must include either GeoJSON file or manually inputted latitude and longitudes")
-        """Check latitude and longitude ranges"""
+       #Check latitude and longitude ranges
         for i in lat:
             if i > 90 or i < -90:
                 raise ValueError("Latitudes must be between -90 and 90 degrees")
         for i in lon:
             if float(i) > 180 or float(i) < -180:
                 raise ValueError("Latitudes must be between -90 and 90 degrees")
-        return values
+        return values """
 
 class DataRequest(DataRequestBase, table=True):
     """
@@ -66,15 +56,15 @@ class DataRequest(DataRequestBase, table=True):
     username: str
     title: str
     desc: str | None
-    authorFNames: str #add check auhor1
+    authorFNames: str
     authorLNames: str
     authorEmails: str
     geometry: str
     latitude: str | None
     longitude: str | None
     myFile: str | None
-    start_date: datetime | None
-    end_date: datetime | None
+    start_date: str | None
+    end_date: str | None
     variables: str | None
     models: str | None
     path: str
@@ -102,8 +92,8 @@ class DataRequestPublic(DataRequestBase):
     latitude: str | None
     longitude: str | None
     myFile: str | None
-    start_date: datetime | None
-    end_date: datetime | None
+    start_date: str | None
+    end_date: str | None
     variables: str | None
     models: str | None
     path: str
@@ -129,8 +119,8 @@ class DataRequestUpdate(DataRequestBase):
     latitude: str | None = None
     longitude: str | None = None
     myFile: str | None = None
-    start_date: datetime | None = None
-    end_date: datetime | None = None
+    start_date: str | None = None
+    end_date: str | None = None
     variables: str | None = None
     models: str | None = None
     path: str | None = None
