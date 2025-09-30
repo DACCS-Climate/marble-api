@@ -17,6 +17,18 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3 :: Only",
 ]
+dependencies = [
+    "fastapi~=0.115",
+    "pymongo~=4.14",
+    "geojson-pydantic~=2.0",
+    "stac-pydantic~=3.4",
+    "pydantic[email]~=2.11"
+]
+
+[project.optional-dependencies]
+dev = ["ruff~=0.13", "pre-commit~=4.3", "fastapi[standard]"]
+prod = ["uvicorn~=0.34"]
+test = ["pytest~=8.4", "faker~=37.8"]
 
 [tool.ruff]
 line-length = 120
@@ -35,3 +47,8 @@ convention = "numpy"
 
 [tool.ruff.lint.per-file-ignores]
 "test/**.py" = ["D", "ANN"]
+
+[tool.pytest.ini_options]
+markers = [
+    "no_db_cleanup: tests with this mark will not clean up the database immediately after the test."
+]

@@ -2,14 +2,30 @@
 
 An API for the Marble platform.
 
+## Requirement
+
+- MongoDB server
+
 ## Developing
 
 To start a development server:
 
 ```sh
-python3 -m pip install -r requirements.dev.txt
-fastapi dev app
+python3 -m pip install .[dev]
+MONGODB_URI="mongodb://localhost:27017" fastapi dev marble_api
 ```
+
+This assumes that you have a mongodb service running at `mongodb://localhost:27017`.
+
+Or to start developing using docker:
+
+```sh
+docker compose -f docker-compose.dev.yml up
+```
+
+This will start a dedicated mongodb container for use with your app. Note that this will
+track changes you make dynamically so you don't have to restart the container if you make
+changes to the source code while the container is running.
 
 ### Contributing
 

@@ -1,4 +1,4 @@
 *
-!requirements.txt
-!requirements.prod.txt
-!app/
+!marble_api/
+**/__pycache__
+!pyproject.toml

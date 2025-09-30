@@ -1,0 +1,9 @@
+services:
+  marble_api:
+    image: marbleclimate/marble-api:latest
+    environment:
+      - MONGODB_URI=mongodb://mongo:27017
+    ports:
+      - 8000:8000
+  mongo:
+    image: mongo:5.0.4

@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING
 
 from fastapi import FastAPI
 
-from app.utils import get_routes
+from marble_api.utils.routing import get_routes
 
 if TYPE_CHECKING:
     from typing import Callable, Iterable

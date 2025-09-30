@@ -18,6 +18,10 @@ __pycache__/
 # virtual environments
 venv/
 
+# build files
+build/
+*.egg-info/
+
 # sqlite files
 *.sqlite
 *.db
