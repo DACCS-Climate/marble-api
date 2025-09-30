@@ -28,7 +28,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["ruff~=0.13", "pre-commit~=4.3", "fastapi[standard]"]
 prod = ["uvicorn~=0.34"]
-test = ["pytest~=8.4", "faker~=37.8"]
+test = ["pytest~=8.4", "faker~=37.8", "pystac[validation]~=1.14"]
 
 [tool.ruff]
 line-length = 120
