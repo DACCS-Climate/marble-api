@@ -138,7 +138,8 @@ class TestPost:
         data = fake.data_request().model_dump_json()
         response = await async_client.post("/v1/data-requests/", json=json.loads(data))
         assert response.status_code == 200
-        assert "id" in response.json()
+        assert (id_ := response.json().get("id"))
+        bson.ObjectId(id_)  # check that the id is a valid object id
         assert json.loads(data) == json.loads(DataRequest(**response.json()).model_dump_json())
 
     async def test_invalid(self, fake, async_client):

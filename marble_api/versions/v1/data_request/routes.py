@@ -26,7 +26,7 @@ async def post_data_request(data_request: DataRequest) -> DataRequestPublic:
     """Create a new data request and return the newly created data request."""
     new_data_request = data_request.model_dump(by_alias=True)
     result = await client.db["data-request"].insert_one(new_data_request)
-    new_data_request["id"] = result.inserted_id
+    new_data_request["id"] = str(result.inserted_id)
     return new_data_request
 
 
