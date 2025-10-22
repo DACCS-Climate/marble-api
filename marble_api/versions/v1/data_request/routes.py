@@ -27,7 +27,7 @@ async def post_data_request(data_request: DataRequest) -> DataRequestPublic:
     new_data_request = data_request.model_dump(by_alias=True)
     result = await client.db["data-request"].insert_one(new_data_request)
     new_data_request["id"] = result.inserted_id
-    return data_request
+    return new_data_request
 
 
 @router.patch("/{request_id}")
