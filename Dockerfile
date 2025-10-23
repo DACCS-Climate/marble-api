@@ -1,11 +1,10 @@
 FROM python:3.13-alpine
 
-COPY requirements.txt requirements.prod.txt /app/
-
-RUN python -m pip install -r /app/requirements.prod.txt
-
-COPY app/ /app/app/
+COPY marble_api/ /app/marble_api/
+COPY pyproject.toml /app/pyproject.toml
 
 WORKDIR /app
 
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--root-path", ""]
+RUN pip install .[prod] && rm pyproject.toml
+
+CMD ["uvicorn", "marble_api:app", "--host", "0.0.0.0", "--port", "8000", "--root-path", ""]

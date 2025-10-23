@@ -1,4 +1,0 @@
--r requirements.txt
-ruff
-pre-commit
-fastapi[standard]
