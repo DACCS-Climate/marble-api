@@ -18,7 +18,12 @@ from stac_pydantic.item import Item
 from stac_pydantic.links import Links
 from typing_extensions import Annotated
 
-from marble_api.utils.geojson import Geometry, bbox_from_coordinates
+from marble_api.utils.geojson import (
+    GeoJSON,
+    bbox_from_coordinates,
+    collapse_geometries,
+    validate_collapsible,
+)
 from marble_api.utils.models import partial_model
 
 PyObjectId = Annotated[str, BeforeValidator(str)]
@@ -45,7 +50,7 @@ class DataRequest(BaseModel):
     title: str
     description: str | None = None
     authors: list[Author]
-    geometry: Geometry | None
+    geometry: GeoJSON | None
     temporal: Temporal
     links: Links
     path: str
@@ -60,6 +65,14 @@ class DataRequest(BaseModel):
     def min_length_if_set(cls, value: Sized | None, info: ValidationInfo) -> Sized | None:
         """Raise an error if the value is not None and is empty."""
         assert value is None or len(value), f"{info.field_name} must be None or non-empty"
+        return value
+
+    @field_validator("geometry")
+    @classmethod
+    def validate_geometries(cls, value: GeoJSON | None) -> dict | None:
+        """Check whether a GeoJSON can be collapsed to a STAC compliant geometry."""
+        if value is not None:
+            validate_collapsible(value)
         return value
 
 
@@ -91,7 +104,7 @@ class DataRequestPublic(DataRequest):
         item = {
             "type": "Feature",
             "stac_version": "1.1.0",
-            "geometry": self.geometry and self.geometry.model_dump(),
+            "geometry": self.geometry and collapse_geometries(self.geometry, check=False).model_dump(),
             "stac_extensions": [],  # TODO
             "id": self.id,  # TODO
             "bbox": None,
@@ -110,7 +123,7 @@ class DataRequestPublic(DataRequest):
             ]
 
         if self.geometry:
-            item["bbox"] = item["geometry"].get("bbox") or bbox_from_coordinates(self.geometry.coordinates)
+            item["bbox"] = item["geometry"].get("bbox") or bbox_from_coordinates(item["geometry"]["coordinates"])
         return item
 
 

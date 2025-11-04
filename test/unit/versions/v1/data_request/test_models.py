@@ -4,6 +4,7 @@ import pytest
 from pydantic import TypeAdapter, ValidationError
 from pystac import Item
 
+from marble_api.utils.geojson import collapse_geometries
 from marble_api.versions.v1.data_request.models import Author, DataRequestUpdate
 
 
@@ -82,6 +83,10 @@ class TestDataRequest:
         with pytest.raises(ValidationError):
             fake_class(temporal=[datetime.datetime.now()])
 
+    def test_uncollapsible_geometry(self, fake, fake_class):
+        with pytest.raises(ValueError):
+            fake_class(geometry=fake.uncollapsible_geojson())
+
 
 class TestDataRequestPublic(TestDataRequest):
     @pytest.fixture
@@ -97,7 +102,7 @@ class TestDataRequestPublic(TestDataRequest):
 
         def test_geometry(self, fake_class):
             request = fake_class()
-            assert request.stac_item["geometry"] == request.geometry.model_dump()
+            assert request.stac_item["geometry"] == collapse_geometries(request.geometry).model_dump()
             assert request.stac_item["bbox"]
 
         def test_null_geometry(self, fake_class):
