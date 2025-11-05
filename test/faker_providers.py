@@ -4,6 +4,17 @@ import bson
 import pytest
 from faker import Faker
 from faker.providers import BaseProvider
+from geojson_pydantic import (
+    Feature,
+    FeatureCollection,
+    GeometryCollection,
+    LineString,
+    MultiLineString,
+    MultiPoint,
+    MultiPolygon,
+    Point,
+    Polygon,
+)
 
 from marble_api.versions.v1.data_request.models import DataRequest, DataRequestPublic, DataRequestUpdate
 
@@ -35,50 +46,141 @@ class GeoJsonProvider(BaseProvider):
         return base
 
     def geo_point(self, dimensions=None):
-        return {**self._geo_base(), "type": "Point", "coordinates": self.point(dimensions)}
+        return Point(type="Point", coordinates=self.point(dimensions), **self._geo_base())
 
     def geo_multipoint(self, dimensions=None):
-        return {
+        return MultiPoint(
+            type="MultiPoint",
+            coordinates=[self.point(dimensions) for _ in range(self.generator.pyint(min_value=1, max_value=12))],
             **self._geo_base(),
-            "type": "MultiPoint",
-            "coordinates": [self.point(dimensions) for _ in range(self.generator.pyint(min_value=1, max_value=12))],
-        }
+        )
 
     def geo_linestring(self, dimensions=None):
-        return {**self._geo_base(), "type": "LineString", "coordinates": self.line(dimensions)}
+        return LineString(type="LineString", coordinates=self.line(dimensions), **self._geo_base())
 
     def geo_multilinestring(self, dimensions=None):
-        return {
+        return MultiLineString(
+            type="MultiLineString",
+            coordinates=[self.line(dimensions) for _ in range(self.generator.pyint(min_value=1, max_value=12))],
             **self._geo_base(),
-            "type": "MultiLineString",
-            "coordinates": [self.line(dimensions) for _ in range(self.generator.pyint(min_value=1, max_value=12))],
-        }
+        )
 
     def geo_polygon(self, dimensions=None):
-        return {**self._geo_base(), "type": "Polygon", "coordinates": [self.linear_ring(dimensions)]}
+        return Polygon(type="Polygon", coordinates=[self.linear_ring(dimensions)], **self._geo_base())
 
     def geo_multipolygon(self, dimensions=None):
-        return {
-            **self._geo_base(),
-            "type": "MultiPolygon",
-            "coordinates": [
+        return MultiPolygon(
+            type="MultiPolygon",
+            coordinates=[
                 [self.linear_ring(dimensions) for _ in range(self.generator.pyint(min_value=1, max_value=12))]
             ],
-        }
+            **self._geo_base(),
+        )
 
-    def geometry(self, dimensions=None):
+    def stac_geometries(self, dimensions=None):
+        return [
+            self.geo_point(dimensions=dimensions),
+            self.geo_multipoint(dimensions=dimensions),
+            self.geo_linestring(dimensions=dimensions),
+            self.geo_multilinestring(dimensions=dimensions),
+            self.geo_polygon(dimensions=dimensions),
+            self.geo_multipolygon(dimensions=dimensions),
+        ]
+
+    def collapsible_geometry_combos(self, dimensions=None):
+        stac_geometries = self.stac_geometries(dimensions=dimensions)
+        return [
+            combo
+            for i in range(0, len(stac_geometries), 2)
+            for combo in ([stac_geometries[i]], [stac_geometries[i + 1]], stac_geometries[i : i + 2])
+        ]
+
+    def uncollapsible_geometry_combos(self, dimensions=None):
+        stac_geometries = self.stac_geometries(dimensions=dimensions)
+        combos = []
+        for i in range(0, len(stac_geometries), 2):
+            for j in range(i + 2, len(stac_geometries)):
+                combos.append([stac_geometries[i], stac_geometries[j]])
+                combos.append([stac_geometries[i + 1], stac_geometries[j]])
+        return combos
+
+    def collapsible_geometry_collections(self, dimensions=None):
+        collapsible_geometry_combos = self.collapsible_geometry_combos(dimensions=dimensions)
+        return [
+            GeometryCollection(type="GeometryCollection", geometries=geos)
+            for geos in collapsible_geometry_combos
+            if len(geos) > 1
+        ]
+
+    def uncollapsible_geometry_collections(self, dimensions=None):
+        uncollapsible_geometry_combos = self.uncollapsible_geometry_combos(dimensions=dimensions)
+        return [
+            GeometryCollection(type="GeometryCollection", geometries=geos) for geos in uncollapsible_geometry_combos
+        ]
+
+    def collapsible_features(self, dimensions=None):
+        stac_geometries = self.stac_geometries(dimensions=dimensions)
+        collapsible_geometry_collections = self.collapsible_geometry_collections(dimensions=dimensions)
+        return [
+            Feature(type="Feature", geometry=geo, properties={})
+            for geo in stac_geometries + collapsible_geometry_collections
+        ]
+
+    def uncollapsible_features(self, dimensions=None):
+        uncollapsible_geometry_collections = self.uncollapsible_geometry_collections(dimensions=dimensions)
+        return [Feature(type="Feature", geometry=geo, properties={}) for geo in uncollapsible_geometry_collections]
+
+    def collapsible_feature_collections(self, dimensions=None):
+        collapsible_geometry_combos = self.collapsible_geometry_combos(dimensions=dimensions)
+        collapsible_features = self.collapsible_features(dimensions=dimensions)
+        collections = []
+        for combo in collapsible_geometry_combos:
+            collections.append(
+                FeatureCollection(
+                    type="FeatureCollection",
+                    features=[Feature(type="Feature", geometry=geo, properties={}) for geo in combo],
+                )
+            )
+        for feature in collapsible_features:
+            collections.append(FeatureCollection(type="FeatureCollection", features=[feature]))
+        return collections
+
+    def uncollapsible_feature_collections(self, dimensions=None):
+        uncollapsible_geometry_combos = self.uncollapsible_geometry_combos(dimensions=dimensions)
+        uncollapsible_features = self.uncollapsible_features(dimensions=dimensions)
+        collections = []
+        for combo in uncollapsible_geometry_combos:
+            collections.append(
+                FeatureCollection(
+                    type="FeatureCollection",
+                    features=[Feature(type="Feature", geometry=geo, properties={}) for geo in combo],
+                )
+            )
+        for feature in uncollapsible_features:
+            collections.append(FeatureCollection(type="FeatureCollection", features=[feature]))
+        return collections
+
+    def collapsible_geojsons(self, dimensions=None):
+        return (
+            self.stac_geometries(dimensions=dimensions)
+            + self.collapsible_geometry_collections(dimensions=dimensions)
+            + self.collapsible_feature_collections(dimensions=dimensions)
+        )
+
+    def uncollapsible_geojsons(self, dimensions=None):
+        return self.uncollapsible_geometry_collections(dimensions=dimensions) + self.uncollapsible_feature_collections(
+            dimensions=dimensions
+        )
+
+    def collapsible_geojson(self, dimensions=None):
         if dimensions is None:
-            dimensions = self.generator.random.choice([3, 2, None])
-        return self.generator.random.choice(
-            [
-                self.geo_point,
-                self.geo_multipoint,
-                self.geo_linestring,
-                self.geo_multilinestring,
-                self.geo_polygon,
-                self.geo_multipolygon,
-            ]
-        )(dimensions)
+            dimensions = self.generator.random.choice([3, 2])
+        return self.generator.random.choice(self.collapsible_geojsons(dimensions))
+
+    def uncollapsible_geojson(self, dimensions=None):
+        if dimensions is None:
+            dimensions = self.generator.random.choice([3, 2])
+        return self.generator.random.choice(self.uncollapsible_geojsons(dimensions))
 
 
 class DataRequestProvider(GeoJsonProvider):
@@ -117,7 +219,7 @@ class DataRequestProvider(GeoJsonProvider):
             title=self.generator.sentence(),
             description=(None if self.generator.pybool(30) else self.generator.paragraph()),
             authors=[self.author() for _ in range(self.generator.random.randint(1, 10))],
-            geometry=self.geometry(),
+            geometry=self.collapsible_geojson(),
             temporal=self.temporal(),
             links=[self.link() for _ in range(self.generator.random.randint(0, 10))],
             path=self.generator.file_path(),

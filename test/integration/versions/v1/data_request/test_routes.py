@@ -142,9 +142,17 @@ class TestPost:
         bson.ObjectId(id_)  # check that the id is a valid object id
         assert json.loads(data) == json.loads(DataRequest(**response.json()).model_dump_json())
 
-    async def test_invalid(self, fake, async_client):
+    async def test_invalid_authors(self, fake, async_client):
         data = json.loads(fake.data_request().model_dump_json())
         data["authors"] = []
+        response = await async_client.post("/v1/data-requests/", json=data)
+        assert response.status_code == 422
+
+    async def test_invalid_uncollapsible_geometry(self, fake, async_client):
+        data = {
+            **json.loads(fake.data_request().model_dump_json()),
+            "geometry": json.loads(fake.uncollapsible_geojson().model_dump_json()),
+        }
         response = await async_client.post("/v1/data-requests/", json=data)
         assert response.status_code == 422
 
@@ -203,6 +211,13 @@ class TestPatch(_TestUpdate):
 
     async def test_invalid_bad_type(self, loaded_data, async_client):
         response = await async_client.patch(f"/v1/data-requests/{loaded_data['id']}", json={"title": 10})
+        assert response.status_code == 422
+
+    async def test_invalid_uncollapsible_geometry(self, fake, loaded_data, async_client):
+        response = await async_client.patch(
+            f"/v1/data-requests/{loaded_data['id']}",
+            json={"geometry": json.loads(fake.uncollapsible_geojson().model_dump_json())},
+        )
         assert response.status_code == 422
 
     async def test_bad_id(self, async_client):
