@@ -2,6 +2,7 @@ import datetime
 
 import pytest
 from pydantic import TypeAdapter, ValidationError
+from pydantic_core import PydanticSerializationError
 from pystac import Item
 
 from marble_api.utils.geojson import collapse_geometries
@@ -33,7 +34,7 @@ class TestDataRequest:
     def test_id_dumped(self, fake_class):
         assert "id" not in fake_class().model_dump()
 
-    @pytest.mark.parametrize("field", ["user", "title", "description", "authors", "path", "contact"])
+    @pytest.mark.parametrize("field", ["title", "description", "authors", "path", "contact"])
     def test_text_fields_not_empty(self, fake_class, field):
         with pytest.raises(ValidationError):
             fake_class(**{field: ""})
@@ -41,7 +42,6 @@ class TestDataRequest:
     @pytest.mark.parametrize(
         "field",
         [
-            "user",
             "title",
             "authors",
             "temporal",
@@ -56,6 +56,13 @@ class TestDataRequest:
     def test_fields_not_nullable(self, fake_class, field):
         with pytest.raises(ValidationError):
             fake_class(**{field: None})
+
+    @pytest.mark.parametrize("value", [None, ""])
+    def test_user_field_present_when_serialized(self, fake_class, value):
+        model = fake_class()
+        model.user = value
+        with pytest.raises(PydanticSerializationError):
+            model.model_dump()
 
     @pytest.mark.parametrize(
         "field",
