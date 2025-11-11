@@ -9,7 +9,9 @@ from pydantic import (
     ConfigDict,
     EmailStr,
     Field,
+    FieldSerializationInfo,
     ValidationInfo,
+    field_serializer,
     field_validator,
 )
 from pydantic.functional_validators import BeforeValidator
@@ -46,7 +48,7 @@ class DataRequest(BaseModel):
     """
 
     id: SkipJsonSchema[PyObjectId | None] = Field(default=None, validation_alias="_id", exclude=True)
-    user: str
+    user: SkipJsonSchema[str | None] = None  # user is set by the route after the model is first validated
     title: str
     description: str | None = None
     authors: list[Author]
@@ -60,7 +62,7 @@ class DataRequest(BaseModel):
     extra_properties: dict[str, str] = {}
     model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
 
-    @field_validator("user", "title", "description", "authors", "path", "contact")
+    @field_validator("title", "description", "authors", "path", "contact")
     @classmethod
     def min_length_if_set(cls, value: Sized | None, info: ValidationInfo) -> Sized | None:
         """Raise an error if the value is not None and is empty."""
@@ -73,6 +75,12 @@ class DataRequest(BaseModel):
         """Check whether a GeoJSON can be collapsed to a STAC compliant geometry."""
         if value is not None:
             validate_collapsible(value)
+        return value
+
+    @field_serializer("user")
+    def require_user_set(self, value: str, info: FieldSerializationInfo) -> str:
+        """Require that the user_name is set when the model is serialized."""
+        assert value, f"{info.field_name} must be set and non-empty"
         return value
 
 
@@ -96,6 +104,7 @@ class DataRequestPublic(DataRequest):
     """
 
     id: Annotated[str, BeforeValidator(str)] = Field(..., validation_alias="_id")
+    user: str  # user is required to be set in the database
     model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True, extra="allow")
 
     @property

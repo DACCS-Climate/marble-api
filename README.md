@@ -6,6 +6,22 @@ An API for the Marble platform.
 
 - MongoDB server
 
+## Authentication and Authorization
+
+Marble API does not do any authentication or authorization (authn/z). That is left to other
+applications (such as [Magpie](https://github.com/ouranosinc/magpie)).
+
+Marble API assumes that only users with administrator access should be able to access all routes
+prefixed with `/vX/admin/` (where `X` is a version number).
+
+Marble API also assumes that only users with a given user name or id `Y` should be able to access
+all routes prefixed with `/vX/users/Y/` (where `X` is a version number).
+
+When integrating Marble API with the [birdhouse](https://github.com/bird-house/birdhouse-deploy/) platform we
+recommend enabling it with the 
+[Marble API component](https://github.com/DACCS-Climate/marble-config/tree/main/components/marble-api). 
+This enables the basic authn/z rules described above through [Magpie](https://github.com/ouranosinc/magpie).
+
 ## Developing
 
 To start a development server:
