@@ -132,6 +132,28 @@ class TestDataRequestPublic(TestDataRequest):
             assert request.stac_item["properties"]["start_datetime"] == temporal[0].isoformat()
             assert request.stac_item["properties"]["end_datetime"] == temporal[1].isoformat()
 
+        def test_temporal_to_utc(self, fake_class):
+            now = datetime.datetime.now(tz=datetime.timezone.utc)
+            offset = datetime.timezone(datetime.timedelta(hours=3))
+            temporal = [now, now + datetime.timedelta(hours=1)]
+            temporal_offset = [t.astimezone(offset) for t in temporal]
+            request = fake_class(temporal=temporal_offset)
+            assert (
+                request.stac_item["properties"]["datetime"]
+                == temporal[0].isoformat()
+                == temporal_offset[0].astimezone(datetime.timezone.utc).isoformat()
+            )
+            assert (
+                request.stac_item["properties"]["start_datetime"]
+                == temporal[0].isoformat()
+                == temporal_offset[0].astimezone(datetime.timezone.utc).isoformat()
+            )
+            assert (
+                request.stac_item["properties"]["end_datetime"]
+                == temporal[1].isoformat()
+                == temporal_offset[1].astimezone(datetime.timezone.utc).isoformat()
+            )
+
         def test_extra_properties(self, fake_class):
             request = fake_class()
             item = request.stac_item

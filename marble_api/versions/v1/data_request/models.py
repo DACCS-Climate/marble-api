@@ -1,4 +1,5 @@
 from collections.abc import Sized
+from datetime import timezone
 from typing import Required, TypedDict
 
 from bson import ObjectId
@@ -124,11 +125,11 @@ class DataRequestPublic(DataRequest):
 
         # STAC spec recommends including datetime even if using start_datetime and end_datetime
         # See: https://github.com/radiantearth/stac-spec/blob/master/best-practices.md#datetime-selection
-        item["properties"]["datetime"] = self.temporal[0].isoformat()
+        item["properties"]["datetime"] = self.temporal[0].astimezone(timezone.utc).isoformat()
 
         if len(set(self.temporal)) > 1:
             item["properties"]["start_datetime"], item["properties"]["end_datetime"] = [
-                t.isoformat() for t in self.temporal
+                t.astimezone(timezone.utc).isoformat() for t in self.temporal
             ]
 
         if self.geometry:
