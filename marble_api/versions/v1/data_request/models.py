@@ -1,6 +1,7 @@
+import datetime
 from collections.abc import Sized
 from datetime import timezone
-from typing import Required, TypedDict
+from typing import Required, Self, TypedDict
 
 from bson import ObjectId
 from pydantic import (
@@ -14,6 +15,7 @@ from pydantic import (
     ValidationInfo,
     field_serializer,
     field_validator,
+    model_validator,
 )
 from pydantic.functional_validators import BeforeValidator
 from pydantic.json_schema import SkipJsonSchema
@@ -55,6 +57,7 @@ class DataRequest(BaseModel):
     authors: list[Author]
     geometry: GeoJSON | None
     temporal: Temporal
+    tz_offset: SkipJsonSchema[list[float] | None] = Field(default=None, exclude=True)
     links: Links
     path: str
     contact: EmailStr
@@ -77,6 +80,21 @@ class DataRequest(BaseModel):
         if value is not None:
             validate_collapsible(value)
         return value
+
+    @model_validator(mode="after")
+    def get_tz_offset(self) -> Self:
+        """Store the timezone offset for the temporal data."""
+        if self.temporal is not None:
+            self.tz_offset = [datetime.datetime.utcoffset(t).total_seconds() for t in self.temporal]
+        return self
+
+    @field_serializer("temporal")
+    def convert_from_utc(self, value: Temporal, info: FieldSerializationInfo) -> list[str]:
+        """Apply the timezone offset to convert this from UTC to a date in the correct timezone."""
+        return [
+            t.astimezone(datetime.timezone(datetime.timedelta(seconds=self.tz_offset[i]))).isoformat()
+            for i, t in enumerate(value)
+        ]
 
     @field_serializer("user")
     def require_user_set(self, value: str, info: FieldSerializationInfo) -> str:

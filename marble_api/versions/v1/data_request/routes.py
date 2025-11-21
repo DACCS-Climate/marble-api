@@ -64,7 +64,6 @@ async def patch_data_request(
         data_request.user = user
     selector = {"_id": _data_request_id(request_id)}
     if updated_fields:
-        updated_fields.update(data_request.model_dump(include="stac_item"))
         result = await client.db["data-request"].find_one_and_update(
             selector, {"$set": updated_fields}, return_document=ReturnDocument.AFTER
         )
