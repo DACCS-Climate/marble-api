@@ -137,7 +137,7 @@ class TestDataRequestPublic(TestDataRequest):
             offset = datetime.timezone(datetime.timedelta(hours=3))
             temporal = [now, now + datetime.timedelta(hours=1)]
             temporal_offset = [t.astimezone(offset) for t in temporal]
-            request = fake_class(temporal=temporal_offset)
+            request = fake_class(temporal=[t.isoformat() for t in temporal_offset])
             assert (
                 request.stac_item["properties"]["datetime"]
                 == temporal[0].isoformat()

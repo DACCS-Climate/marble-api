@@ -1,5 +1,3 @@
-import datetime
-
 import bson
 import pytest
 from faker import Faker
@@ -192,22 +190,22 @@ class DataRequestProvider(GeoJsonProvider):
             author_["email"] = self.generator.email()
         return author_
 
-    def utc_date_time_seconds_precision(self):
-        return self.generator.date_time(tzinfo=datetime.timezone.utc).replace(microsecond=0)
+    def tz_aware_date_time_seconds_precision(self):
+        return self.generator.date_time(tzinfo=self.generator.pytimezone()).replace(microsecond=0)
 
     def temporal(self):
         opt = self.generator.random.random()
         if opt < 1 / 3:
             return sorted(
                 [
-                    self.utc_date_time_seconds_precision(),
-                    self.utc_date_time_seconds_precision(),
+                    self.tz_aware_date_time_seconds_precision(),
+                    self.tz_aware_date_time_seconds_precision(),
                 ]
             )
         elif opt < 2 / 3:
-            return [self.utc_date_time_seconds_precision()] * 2
+            return [self.tz_aware_date_time_seconds_precision()] * 2
         else:
-            return [self.utc_date_time_seconds_precision()]
+            return [self.tz_aware_date_time_seconds_precision()]
 
     def link(self):
         return {"href": self.generator.uri(), "rel": self.generator.word(), "type": self.generator.mime_type()}

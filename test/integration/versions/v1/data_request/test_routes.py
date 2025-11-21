@@ -7,7 +7,7 @@ import pytest
 from stac_pydantic import Item
 
 from marble_api.database import client
-from marble_api.versions.v1.data_request.models import DataRequest, DataRequestPublic
+from marble_api.versions.v1.data_request.models import DataRequestPublic
 from marble_api.versions.v1.data_request.routes import get_data_requests
 
 pytestmark = pytest.mark.anyio
@@ -226,11 +226,10 @@ class _TestPost:
         data = fake.data_request().model_dump_json(exclude=["user"])
         response = await async_client.post(collection_route, json=json.loads(data))
         assert response.status_code == 200
-        assert (id_ := response.json().get("id"))
+        response_data = response.json()
+        assert (id_ := response_data.pop("id", None))
         bson.ObjectId(id_)  # check that the id is a valid object id
-        assert {"user": data_requests[0]["user"], **json.loads(data)} == json.loads(
-            DataRequest(**response.json()).model_dump_json()
-        )
+        assert {"user": data_requests[0]["user"], **json.loads(data)} == response_data
 
     async def test_invalid_authors(self, fake, async_client, collection_route):
         data = json.loads(fake.data_request().model_dump_json())
