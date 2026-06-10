@@ -137,7 +137,7 @@ class DataRequestPublic(DataRequest):
             "bbox": None,
             "properties": dict(self.extra_properties),  # TODO: add more
             "links": self.links.model_dump(),
-            "assets": self.assets.model_dump(),
+            "assets": {key: asset.model_dump() for key, asset in self.assets.items()},
         }
 
         # STAC spec recommends including datetime even if using start_datetime and end_datetime
