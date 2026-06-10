@@ -21,6 +21,7 @@ from pydantic.functional_validators import BeforeValidator
 from pydantic.json_schema import SkipJsonSchema
 from stac_pydantic.item import Item
 from stac_pydantic.links import Links
+from stac_pydantic.shared import Asset
 from typing_extensions import Annotated
 
 from marble_api.utils.geojson import (
@@ -59,14 +60,12 @@ class DataRequest(BaseModel):
     temporal: Temporal
     tz_offset: SkipJsonSchema[list[float] | None] = Field(default=None, exclude=True)
     links: Links
-    path: str
+    assets: dict[str, Asset]
     contact: EmailStr
-    additional_paths: list[str] = []
-    variables: list[str] = []
     extra_properties: dict[str, str] = {}
     model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
 
-    @field_validator("title", "description", "authors", "path", "contact")
+    @field_validator("title", "description", "authors", "assets", "contact")
     @classmethod
     def min_length_if_set(cls, value: Sized | None, info: ValidationInfo) -> Sized | None:
         """Raise an error if the value is not None and is empty."""
@@ -138,7 +137,7 @@ class DataRequestPublic(DataRequest):
             "bbox": None,
             "properties": dict(self.extra_properties),  # TODO: add more
             "links": self.links.model_dump(),
-            "assets": {},  # TODO: determine assets from other fields
+            "assets": {key: asset.model_dump() for key, asset in self.assets.items()},
         }
 
         # STAC spec recommends including datetime even if using start_datetime and end_datetime

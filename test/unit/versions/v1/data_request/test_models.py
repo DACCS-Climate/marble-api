@@ -34,7 +34,7 @@ class TestDataRequest:
     def test_id_dumped(self, fake_class):
         assert "id" not in fake_class().model_dump()
 
-    @pytest.mark.parametrize("field", ["title", "description", "authors", "path", "contact"])
+    @pytest.mark.parametrize("field", ["title", "description", "authors", "assets", "contact"])
     def test_text_fields_not_empty(self, fake_class, field):
         with pytest.raises(ValidationError):
             fake_class(**{field: ""})
@@ -46,10 +46,8 @@ class TestDataRequest:
             "authors",
             "temporal",
             "links",
-            "path",
+            "assets",
             "contact",
-            "additional_paths",
-            "variables",
             "extra_properties",
         ],
     )
@@ -68,8 +66,6 @@ class TestDataRequest:
         "field",
         [
             "description",
-            "additional_paths",
-            "variables",
             "extra_properties",
         ],
     )

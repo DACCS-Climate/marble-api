@@ -210,6 +210,15 @@ class DataRequestProvider(GeoJsonProvider):
     def link(self):
         return {"href": self.generator.uri(), "rel": self.generator.word(), "type": self.generator.mime_type()}
 
+    def asset(self):
+        return {
+            "href": self.generator.uri(),
+            "type": self.generator.mime_type(),
+            "title": self.generator.word(),
+            "description": self.generator.sentence(),
+            "roles": self.generator.get_words_list(),
+        }
+
     def _data_request_inputs(self, unset=None):
         inputs = dict(
             id=bson.ObjectId(),
@@ -220,11 +229,14 @@ class DataRequestProvider(GeoJsonProvider):
             geometry=self.collapsible_geojson(),
             temporal=self.temporal(),
             links=[self.link() for _ in range(self.generator.random.randint(0, 10))],
-            path=self.generator.file_path(),
+            assets={
+                key: self.asset()
+                for key in self.generator.pylist(
+                    nb_elements=self.generator.pyint(1, 10), variable_nb_elements=False, value_types=[str]
+                )
+            },
             contact=self.generator.email(),
-            additional_paths=[self.generator.file_path() for _ in range(self.generator.random.randint(0, 10))],
-            variables=([] if self.generator.pybool(10) else self.generator.pylist(allowed_types=[str])),
-            extra_properties=({} if self.generator.pybool(10) else self.generator.pydict(allowed_types=[str])),
+            extra_properties=({} if self.generator.pybool(10) else self.generator.pydict(value_types=[str])),
         )
         if unset:
             for field in unset:
