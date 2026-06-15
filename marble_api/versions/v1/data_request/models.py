@@ -13,6 +13,7 @@ from pydantic import (
     Field,
     FieldSerializationInfo,
     ValidationInfo,
+    computed_field,
     field_serializer,
     field_validator,
     model_validator,
@@ -30,7 +31,7 @@ from marble_api.utils.geojson import (
     collapse_geometries,
     validate_collapsible,
 )
-from marble_api.utils.models import partial_model
+from marble_api.utils.models import object_id, partial_model
 
 PyObjectId = Annotated[str, BeforeValidator(str)]
 Temporal = Annotated[list[AwareDatetime], Field(..., min_length=1, max_length=2), AfterValidator(sorted)]
@@ -53,6 +54,7 @@ class DataRequest(BaseModel):
 
     id: SkipJsonSchema[PyObjectId | None] = Field(default=None, validation_alias="_id", exclude=True)
     user: SkipJsonSchema[str | None] = None  # user is set by the route after the model is first validated
+    updated: SkipJsonSchema[AwareDatetime | None] = None  # updated is set by the route
     title: str
     description: str | None = None
     authors: list[Author]
@@ -97,7 +99,7 @@ class DataRequest(BaseModel):
 
     @field_serializer("user")
     def require_user_set(self, value: str, info: FieldSerializationInfo) -> str:
-        """Require that the user_name is set when the model is serialized."""
+        """Require that the user name be set when the model is serialized."""
         assert value, f"{info.field_name} must be set and non-empty"
         return value
 
@@ -123,7 +125,13 @@ class DataRequestPublic(DataRequest):
 
     id: Annotated[str, BeforeValidator(str)] = Field(..., validation_alias="_id")
     user: str  # user is required to be set in the database
+    updated: AwareDatetime
     model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True, extra="allow")
+
+    @computed_field
+    def created(self) -> AwareDatetime:
+        """Set the created time based on the object id."""
+        return object_id(self.id, None).generation_time
 
     @property
     def stac_item(self) -> Item:
