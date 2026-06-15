@@ -26,7 +26,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["ruff~=0.13", "pre-commit~=4.3", "fastapi[standard]"]
+dev = [
+    "ruff~=0.13", 
+    "pre-commit~=4.3", 
+    "fastapi[standard]<0.137" # TODO: handle breaking changes https://github.com/fastapi/fastapi/pull/15745
+]
 prod = ["uvicorn~=0.34"]
 test = ["pytest~=8.4", "faker~=37.8", "pystac[validation]~=1.14", "httpx~=0.28"]
 
