@@ -6,6 +6,7 @@ from pydantic_core import PydanticSerializationError
 from pystac import Item
 
 from marble_api.utils.geojson import collapse_geometries
+from marble_api.utils.models import object_id
 from marble_api.versions.v1.data_request.models import Author, DataRequestUpdate
 
 
@@ -98,6 +99,11 @@ class TestDataRequestPublic(TestDataRequest):
 
     def test_id_dumped(self, fake_class):
         assert "id" in fake_class().model_dump()
+
+    def test_created(self, fake_class):
+        model = fake_class()
+        assert model.created
+        assert object_id(model.id, None).generation_time == model.created
 
     class TestStacItem:
         def test_valid(self, fake_class):

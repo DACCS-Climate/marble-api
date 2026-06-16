@@ -216,13 +216,14 @@ class DataRequestProvider(GeoJsonProvider):
             "type": self.generator.mime_type(),
             "title": self.generator.word(),
             "description": self.generator.sentence(),
-            "roles": self.generator.get_words_list(),
+            "roles": self.generator.words(nb=self.generator.random.randint(0, 10)),
         }
 
     def _data_request_inputs(self, unset=None):
         inputs = dict(
             id=bson.ObjectId(),
             user=self.generator.profile("username")["username"],
+            updated=self.generator.tz_aware_date_time_seconds_precision(),
             title=self.generator.sentence(),
             description=(None if self.generator.pybool(30) else self.generator.paragraph()),
             authors=[self.author() for _ in range(self.generator.random.randint(1, 10))],

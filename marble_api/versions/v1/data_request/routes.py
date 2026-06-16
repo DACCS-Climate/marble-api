@@ -1,3 +1,4 @@
+import datetime
 from collections.abc import AsyncGenerator
 from typing import Annotated
 
@@ -43,6 +44,7 @@ def _is_router_scope(request: Request, router: APIRouter) -> bool:
 async def post_data_request_user(user: str, data_request: DataRequest) -> DataRequestPublic:
     """Create a new data request and return the newly created data request."""
     data_request.user = user
+    data_request.updated = datetime.datetime.now(tz=datetime.timezone.utc)
     new_data_request = data_request.model_dump(by_alias=True)
     result = await client.db["data-request"].insert_one(new_data_request)
     new_data_request["id"] = str(result.inserted_id)
@@ -63,6 +65,8 @@ async def patch_data_request(
     if user:
         data_request.user = user
     selector = {"_id": _data_request_id(request_id)}
+    # updated timestamps are handled automatically
+    updated_fields["updated"] = datetime.datetime.now(tz=datetime.timezone.utc)
     if updated_fields:
         result = await client.db["data-request"].find_one_and_update(
             selector, {"$set": updated_fields}, return_document=ReturnDocument.AFTER

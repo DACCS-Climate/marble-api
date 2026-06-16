@@ -1,3 +1,4 @@
+import datetime
 import inspect
 import json
 from urllib.parse import parse_qs, urlparse
@@ -11,6 +12,13 @@ from marble_api.versions.v1.data_request.models import DataRequestPublic
 from marble_api.versions.v1.data_request.routes import get_data_requests
 
 pytestmark = pytest.mark.anyio
+
+
+def compare_no_timestamps(dict1, dict2, message=""):
+    timestamps = {"created", "updated"}
+    assert {k: v for k, v in dict1.items() if k not in timestamps} == {
+        k: v for k, v in dict2.items() if k not in timestamps
+    }, message
 
 
 class _TestUser:
@@ -62,7 +70,7 @@ class _TestGetOne(_TestGet):
     async def test_get(self, async_client, data_requests, member_route):
         resp = await async_client.get(member_route)
         assert resp.status_code == 200
-        assert DataRequestPublic(**data_requests[0]) == DataRequestPublic(**resp.json())
+        assert DataRequestPublic(**data_requests[0]).model_dump() == DataRequestPublic(**resp.json()).model_dump()
 
     async def test_get_stac(self, async_client, member_route):
         resp = await async_client.get(f"{member_route}?stac=true")
@@ -95,9 +103,9 @@ class _TestGetMany(_TestGet):
 
     async def test_get(self, async_client, data_requests, collection_route):
         response = await async_client.get(collection_route)
-        models = {str(req["_id"]): DataRequestPublic(**req) for req in data_requests}
+        models = {str(req["_id"]): DataRequestPublic(**req).model_dump() for req in data_requests}
         for req in response.json()["data_requests"]:
-            assert DataRequestPublic(**req) == models[req["id"]]
+            assert DataRequestPublic(**req).model_dump() == models[req["id"]]
 
     async def test_get_stac(self, async_client, collection_route):
         resp = await async_client.get(f"{collection_route}?stac=true")
@@ -229,7 +237,7 @@ class _TestPost:
         response_data = response.json()
         assert (id_ := response_data.pop("id", None))
         bson.ObjectId(id_)  # check that the id is a valid object id
-        assert {"user": data_requests[0]["user"], **json.loads(data)} == response_data
+        compare_no_timestamps({"user": data_requests[0]["user"], **json.loads(data)}, response_data)
 
     async def test_invalid_authors(self, fake, async_client, collection_route):
         data = json.loads(fake.data_request().model_dump_json())
@@ -276,7 +284,7 @@ class _TestPatch(_TestUpdate):
         response = await async_client.patch(member_route, json=update)
         assert response.status_code == 200
         loaded_data.update(update)
-        assert loaded_data == response.json()
+        compare_no_timestamps(loaded_data, response.json())
 
     async def test_valid_multiple(self, loaded_data, async_client, fake, member_route):
         title = fake.sentence()
@@ -285,12 +293,12 @@ class _TestPatch(_TestUpdate):
         response = await async_client.patch(member_route, json=update)
         assert response.status_code == 200
         loaded_data.update(update)
-        assert loaded_data == response.json()
+        compare_no_timestamps(loaded_data, response.json())
 
     async def test_update_nothing(self, loaded_data, async_client, member_route):
         response = await async_client.patch(member_route, json={})
         assert response.status_code == 200
-        assert loaded_data == response.json()
+        compare_no_timestamps(loaded_data, response.json())
 
     async def test_no_id_update(self, loaded_data, async_client, member_route):
         update = {"id": str(bson.ObjectId())}
@@ -298,7 +306,7 @@ class _TestPatch(_TestUpdate):
         assert response.status_code == 200
         assert response.json()["id"] == loaded_data["id"]
         assert response.json()["id"] != update["id"]
-        assert loaded_data == response.json()
+        compare_no_timestamps(loaded_data, response.json())
 
     async def test_invalid_unset_value(self, async_client, member_route):
         response = await async_client.patch(member_route, json={"title": None})
@@ -319,6 +327,27 @@ class _TestPatch(_TestUpdate):
         resp = await async_client.patch(f"{collection_route}/id-does-not-exist", json={})
         assert resp.status_code == 404, resp.json()
 
+    async def test_created_in_response(self, fake, async_client, member_route):
+        title = fake.sentence()
+        update = {"title": title}
+        response = await async_client.patch(member_route, json=update)
+        assert response.status_code == 200
+        assert response.json()["created"]
+
+    async def test_updated_updated(self, loaded_data, fake, async_client, member_route):
+        title = fake.sentence()
+        update = {"title": title}
+        response = await async_client.patch(member_route, json=update)
+        assert response.status_code == 200
+        assert loaded_data["updated"] != response.json()["updated"]
+
+    @pytest.mark.parametrize("field", ["created", "updated"])
+    async def test_no_updatable_timestamps(self, loaded_data, async_client, member_route, field):
+        new_date = datetime.datetime.now(tz=datetime.timezone.utc) - datetime.timedelta(days=10)
+        response = await async_client.patch(member_route, json={field: new_date.isoformat()})
+        assert response.status_code == 200
+        assert response.json()[field] != new_date.isoformat()
+
 
 class TestPatchUser(_TestPatch, _TestUser):
     async def test_update_everything(self, loaded_data, async_client, fake, member_route):
@@ -327,7 +356,7 @@ class TestPatchUser(_TestPatch, _TestUser):
         assert response.status_code == 200
         update["id"] = loaded_data["id"]
         update["user"] = loaded_data["user"]
-        assert update == response.json()
+        compare_no_timestamps(update, response.json())
 
     async def test_no_update_user(self, loaded_data, async_client, member_route):
         new_user = loaded_data["user"] + "suffix"
@@ -341,7 +370,7 @@ class TestPatchAdmin(_TestPatch, _TestAdmin):
         response = await async_client.patch(member_route, json=update)
         assert response.status_code == 200
         update["id"] = loaded_data["id"]
-        assert update == response.json()
+        compare_no_timestamps(update, response.json())
 
     async def test_update_user(self, loaded_data, async_client, member_route):
         new_user = loaded_data["user"] + "suffix"
