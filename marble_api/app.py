@@ -1,35 +1,50 @@
+from importlib import metadata
+
 from fastapi import FastAPI, Request
 
-from marble_api.utils.routing import get_routes
-from marble_api.versions.v1.app import app as v1_app
-from marble_api.versions.versioning import add_fallback_routes
+from marble_api.versions.v1.app import router as v1_router
 
-VERSIONS = [("/v1", v1_app)]
+_metadata = metadata.metadata("marble_api").json
+
+app = FastAPI(
+    title=_metadata["name"],
+    version=_metadata["version"],
+    description=_metadata["summary"],
+    docs_url=None,
+    redoc_url="/docs",
+)
+
+app.include_router(v1_router)
 
 
-app = FastAPI()
-
-
-@app.get("/")
+@app.get("/", tags=["root"])
 async def root(request: Request) -> dict:
-    """Return information about all routes."""
-    return {
-        "routes": [
-            {
-                "path": f"{m.path if (m := info.get('mount')) else ''}{info['route'].path}",
-                "methods": info["route"].methods,
-            }
-            for info in get_routes(request.app, included_in_schema_only=True)
-        ]
-    }
+    """Return app information."""
+    return {"name": request.app.title, "version": request.app.version, "description": request.app.description}
 
 
-def _mount_versions() -> None:
-    """Mount all implemented versions of this API under app."""
-    for i, (prefix, version_app) in enumerate(VERSIONS):
-        app.mount(prefix, version_app)
-        previous_version = VERSIONS[i - 1][1] if i else app
-        add_fallback_routes(version_app, previous_version)
+_original_openapi = app.openapi
 
 
-_mount_versions()
+def openapi_with_tag_groups() -> dict:
+    """Update openapi schema with x-tagGroup data for nested versions."""
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    _original_openapi()
+    groups = {"/": {"root"}}
+    for path, path_schema in app.openapi_schema["paths"].items():
+        path_version = path.split("/")[1]
+        if path_version.startswith("v"):
+            version_tag = f"Version {path_version[1:]}"
+            if version_tag not in groups:
+                groups[version_tag] = set()
+            for route_schema in path_schema.values():
+                if "tags" in route_schema:
+                    route_schema["tags"] = [f"{path_version}: {tag}" for tag in route_schema["tags"]]
+                    groups[version_tag].update(route_schema["tags"])
+    app.openapi_schema["x-tagGroups"] = [{"name": group, "tags": list(tags)} for group, tags in groups.items()]
+    return app.openapi_schema
+
+
+app.openapi = openapi_with_tag_groups

@@ -76,36 +76,9 @@ If you wish to introduce backwards incompatible changes, you must create a new v
 To create a new version:
 
 - create a new directory under `app/versions` with the name of the next version (eg: v2, v3, etc.)
-- create a new `FastAPI` app in that directory and add any routes, models, etc. 
-- in `app/main.py` import the app from the new version and append it to the `VERSIONS` constant.
-- the `VERSIONS` constant contains tuples where the first value is the version prefix (eg: `/v2`, `/v3`, etc.)
-  and the second value contains the corresponding app.
-
-Note that all applications in the `VERSIONS` constant will implement any routes defined in previous versions
-(ie. versions that are listed earlier in `VERSIONS`). 
-
-If a route should not be made available in later versions, add the `@last_version` decorator to it.
-
-For example, if v1 defines:
-
-```python
-@app.get("/test")
-def test():
-    ...
-```
-
-Then the `/test` route will be available in versions `/v2`, `/v3`, etc.
-
-If v2 then redefines it as:
-
-```python
-@app.get("/test")
-@last_version
-def test():
-    ...
-```
-
-Then the `/test` route will not be available from `/v3` onwards.
+- create a new `fastapi.APIRouter` router in that directory and add any routes, models, etc. 
+- the new router should have a prefix of the form `vX` where `X` is the version number (eg: `/v2`, `/v3`, etc.)
+- in `app/main.py` import the app from the new version and add it to the app with `.include_router`.
 
 ## Testing
 

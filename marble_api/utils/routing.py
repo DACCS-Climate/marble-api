@@ -12,7 +12,7 @@ def get_routes(
 
     This includes FastAPI applications recursively mounted as well.
     If included_in_schema_only is True, do not include routes who are not included in the schema
-    (ie. their included_in_schema attribute is False)._in_
+    (ie. their included_in_schema attribute is False).
     """
     for route in app_.routes:
         if isinstance(route, Mount):
