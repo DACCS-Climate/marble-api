@@ -1,9 +1,9 @@
-from fastapi import FastAPI
+from fastapi import APIRouter
 
 from marble_api.versions.v1.data_request.routes import admin_router as data_request_admin_router
 from marble_api.versions.v1.data_request.routes import user_router as data_request_user_router
 
-app = FastAPI(version="1")
+router = APIRouter(prefix="/v1")
 
-app.include_router(data_request_user_router)
-app.include_router(data_request_admin_router)
+router.include_router(data_request_user_router)
+router.include_router(data_request_admin_router)
