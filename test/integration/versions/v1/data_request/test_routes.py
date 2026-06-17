@@ -101,6 +101,19 @@ class _TestGetMany(_TestGet):
     n_data_requests = default_link_limit * 2 + 2
     n_data_requests_return_count: int
 
+    async def get_all_data(self, async_client, route):
+        response = await async_client.get(route)
+        data = []
+        while True:
+            data.extend(response.json()["data_requests"])
+            for link in response.json()["links"]:
+                if link["rel"] == "next":
+                    response = await async_client.get(link["href"])
+                    break
+            else:
+                break
+        return data
+
     async def test_get(self, async_client, data_requests, collection_route):
         response = await async_client.get(collection_route)
         models = {str(req["_id"]): DataRequestPublic(**req).model_dump() for req in data_requests}
@@ -132,6 +145,22 @@ class _TestGetMany(_TestGet):
     async def test_get_limit_over_max(self, async_client, collection_route):
         response = await async_client.get(f"{collection_route}?limit=200")
         assert response.status_code == 422
+
+    @pytest.mark.parametrize("sort_by", ["id", "user", "contact", "title", "created", "updated"])
+    @pytest.mark.parametrize("ascending", [True, False])
+    async def test_sort_order_single_page(self, async_client, collection_route, sort_by, ascending):
+        response = await async_client.get(f"{collection_route}?sort_by={sort_by}&ascending={ascending}")
+        data = [req[sort_by] for req in response.json()["data_requests"]]
+        assert data == sorted(data, reverse=(not ascending))
+
+    @pytest.mark.parametrize("sort_by", ["id", "user", "contact", "title", "created", "updated"])
+    @pytest.mark.parametrize("ascending", [True, False])
+    async def test_sort_order_multi_page(self, async_client, collection_route, sort_by, ascending):
+        data = await self.get_all_data(async_client, f"{collection_route}?sort_by={sort_by}&ascending={ascending}")
+        data = [(req[sort_by], req["id"]) for req in data]
+        assert len(data) == self.n_data_requests_return_count  # all data found
+        assert len(data) == len(set(data))  # no duplicates
+        assert data == sorted(data, reverse=(not ascending))  # in correct order
 
     async def test_get_first_page_links(self, async_client, collection_route):
         response = await async_client.get(collection_route)
