@@ -1,8 +1,7 @@
 import datetime
 from collections.abc import AsyncGenerator
-from typing import Annotated
+from typing import Annotated, Literal
 
-import pymongo
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic_core import PydanticSerializationError
@@ -10,6 +9,7 @@ from pymongo import ReturnDocument
 
 from marble_api.database import client
 from marble_api.utils.models import object_id
+from marble_api.utils.routes import paginated_query
 from marble_api.versions.v1.data_request.models import (
     DataRequest,
     DataRequestPublic,
@@ -123,6 +123,8 @@ async def get_data_requests(
     after: str | None = None,
     before: str | None = None,
     limit: Annotated[int, Query(le=100, gt=0)] = 10,
+    sort_by: Literal["id", "user", "contact", "title", "created", "updated"] = "id",
+    ascending: bool = True,
     stac: bool = False,
 ) -> DataRequestsResponse:
     """
@@ -131,67 +133,26 @@ async def get_data_requests(
     This response is paginated and will only return at most limit objects at a time (maximum 100).
     Use the offset and limit parameters to select specific ranges of data requests.
     """
-    reverse_it = False
+    # note: created is not a field, it is based on the timesamp used to create the value of _id
+    if sort_by in ("id", "created"):
+        sort_by = "_id"
+
     selector = {}
+
     if _is_router_scope(request, user_router):
         selector["user"] = user
-    if after:
-        db_request = (
-            client.db["data-request"]
-            .find({**selector, "_id": {"$gt": _data_request_id(after)}})
-            .sort("_id", pymongo.ASCENDING)
-        )
-    elif before:
-        db_request = (
-            client.db["data-request"]
-            .find({**selector, "_id": {"$lt": _data_request_id(before)}})
-            .sort("_id", pymongo.DESCENDING)
-        )
-        reverse_it = True  # put the eventual result back in ascending order for consistency
-    else:
-        db_request = client.db["data-request"].find(selector).sort("_id", pymongo.ASCENDING)
-    data_requests = await db_request.limit(limit + 1).to_list()
-    if reverse_it:
-        data_requests = list(reversed(data_requests))
 
-    query_params = {}
+    data_requests, links = await paginated_query(
+        collection=client.db["data-request"],
+        limit=limit,
+        request=request,
+        sort_by=sort_by,
+        after=_data_request_id(after) if after else None,
+        before=_data_request_id(before) if before else None,
+        ascending=ascending,
+        **selector,
+    )
 
-    over_limit = len(data_requests) > limit
-
-    if data_requests:
-        if after:
-            if over_limit:
-                data_requests.pop()
-                query_params["after"] = data_requests[-1]["_id"]
-            query_params["before"] = data_requests[0]["_id"]
-        elif before:
-            if over_limit:
-                data_requests.pop(0)
-                query_params["before"] = data_requests[0]["_id"]
-            query_params["after"] = data_requests[-1]["_id"]
-        elif over_limit:
-            data_requests.pop()
-            query_params["after"] = data_requests[-1]["_id"]
-
-    links = []
-
-    base_url = request.url.remove_query_params(["after", "before"])
-    if query_params.get("after"):
-        links.append(
-            {
-                "rel": "next",
-                "type": "application/json",
-                "href": str(base_url.include_query_params(after=query_params["after"])),
-            }
-        )
-    if query_params.get("before"):
-        links.append(
-            {
-                "rel": "prev",
-                "type": "application/json",
-                "href": str(base_url.include_query_params(before=query_params["before"])),
-            }
-        )
     if stac:
         data_requests = [{**r, "stac_item": DataRequestPublic(**r).stac_item} for r in data_requests]
     return {"data_requests": data_requests, "links": links}
