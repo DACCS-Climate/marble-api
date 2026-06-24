@@ -25,18 +25,12 @@ async def _handle_serialization_error() -> AsyncGenerator[None]:
         raise HTTPException(status_code=422, detail=str(e)) from e
 
 
-user_router = APIRouter(prefix="/users/{user}/data-requests", tags=["User"])
-admin_router = APIRouter(
-    prefix="/admin/data-requests", tags=["Admin"], dependencies=[Depends(_handle_serialization_error)]
-)
+user_router = APIRouter(prefix="/data-requests")
+admin_router = APIRouter(prefix="/data-requests", dependencies=[Depends(_handle_serialization_error)])
 
 
 def _data_request_id(id_: str) -> ObjectId:
     return object_id(id_, HTTPException(status_code=404, detail=f"data publish request with id={id_} not found"))
-
-
-def _is_router_scope(request: Request, router: APIRouter) -> bool:
-    return request.scope.get("route").path.startswith(f"{router.prefix}/")
 
 
 @user_router.post("/")
@@ -51,18 +45,21 @@ async def post_data_request_user(user: str, data_request: DataRequest) -> DataRe
     return new_data_request
 
 
-@user_router.patch("/{request_id}")
+def _check_user_change(data_request: DataRequestUpdate, user: str | None = None) -> None:
+    """Users cannot change the data request so that it belongs to a different user."""
+    updated_fields = data_request.model_dump(exclude_unset=True, by_alias=True)
+    if updated_fields.get("user") and user != updated_fields.get("user"):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+
+@user_router.patch("/{request_id}", dependencies=[Depends(_check_user_change)])
 @admin_router.patch("/{request_id}")
 async def patch_data_request(
-    request_id: str, data_request: DataRequestUpdate, request: Request, user: str | None = None
+    request_id: str, data_request: DataRequestUpdate, user: str | None = None
 ) -> DataRequestPublic:
     """Update fields of data request and return the updated data request."""
     updated_fields = data_request.model_dump(exclude_unset=True, by_alias=True)
-    updated_user = updated_fields.get("user")
-    if updated_user and _is_router_scope(request, user_router) and user != updated_user:
-        # Users cannot change the data request so that it belongs to a different user
-        raise HTTPException(status_code=403, detail="Forbidden")
-    if user:
+    if user is not None:
         data_request.user = user
     selector = {"_id": _data_request_id(request_id)}
     # updated timestamps are handled automatically
@@ -82,12 +79,10 @@ async def patch_data_request(
 
 @user_router.get("/{request_id}", response_model_by_alias=False)
 @admin_router.get("/{request_id}", response_model_by_alias=False)
-async def get_data_request(
-    request_id: str, request: Request, stac: bool = False, user: str | None = None
-) -> DataRequestPublic:
+async def get_data_request(request_id: str, stac: bool = False, user: str | None = None) -> DataRequestPublic:
     """Get a data request with the given request_id."""
     selector = {"_id": _data_request_id(request_id)}
-    if _is_router_scope(request, user_router):
+    if user is not None:
         selector["user"] = user
     if (result := await client.db["data-request"].find_one(selector)) is not None:
         if stac:
@@ -105,7 +100,7 @@ async def get_data_request(
 async def delete_data_request(request_id: str, request: Request, user: str | None = None) -> Response:
     """Delete a data request with the given request_id."""
     selector = {"_id": _data_request_id(request_id)}
-    if _is_router_scope(request, user_router):
+    if user is not None:
         selector["user"] = user
 
     result = await client.db["data-request"].delete_one(selector)
@@ -139,7 +134,7 @@ async def get_data_requests(
 
     selector = {}
 
-    if _is_router_scope(request, user_router):
+    if user is not None:
         selector["user"] = user
 
     data_requests, links = await paginated_query(

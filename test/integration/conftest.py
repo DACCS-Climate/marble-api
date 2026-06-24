@@ -36,3 +36,16 @@ async def refresh_database(request):
 async def async_client():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         yield client
+
+
+@pytest.fixture
+async def enable_magpie_auth(test_config):
+    test_config.magpie_auth_enabled = True
+    test_config.magpie_admin_group = "admin_test"
+    test_config.magpie_url = "http://localhost/magpie"
+    yield
+
+
+@pytest.fixture
+async def auth_mock(enable_magpie_auth, respx_mock, test_config):
+    yield respx_mock.get(f"{test_config.magpie_url}/session")

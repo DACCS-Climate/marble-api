@@ -2,7 +2,7 @@ from importlib import metadata
 
 from fastapi import FastAPI, Request
 
-from marble_api.versions.v1.app import router as v1_router
+from marble_api.versions.v1 import router as v1_router
 
 _metadata = metadata.metadata("marble_api").json
 

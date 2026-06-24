@@ -22,13 +22,15 @@ dependencies = [
     "pymongo~=4.14",
     "geojson-pydantic~=2.0",
     "stac-pydantic~=3.4",
-    "pydantic[email]~=2.11"
+    "pydantic[email]~=2.11",
+    "pydantic-settings~=2.14",
+    "httpx~=0.28"
 ]
 
 [project.optional-dependencies]
 dev = ["ruff~=0.13", "pre-commit~=4.3", "fastapi[standard]"]
 prod = ["uvicorn~=0.34"]
-test = ["pytest~=8.4", "faker~=37.8", "pystac[validation]~=1.14", "httpx~=0.28"]
+test = ["pytest~=8.4", "faker~=37.8", "pystac[validation]~=1.14", "respx~=0.23"]
 
 [tool.ruff]
 line-length = 120

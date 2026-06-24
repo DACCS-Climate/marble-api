@@ -1,9 +1,11 @@
 import datetime
 import inspect
 import json
+from typing import Literal
 from urllib.parse import parse_qs, urlparse
 
 import bson
+import httpx
 import pytest
 from stac_pydantic import Item
 
@@ -21,28 +23,88 @@ def compare_no_timestamps(dict1, dict2, message=""):
     }, message
 
 
-class _TestUser:
+class _TestAuthEnabled:
+    request_method: str
+    request_path_type: Literal["member", "collection"]
+    auth_type: Literal["user", "admin"]
+
+    @pytest.fixture
+    async def make_request(self, async_client, member_route, collection_route):
+        route = member_route if self.request_path_type == "member" else collection_route
+        return getattr(async_client, self.request_method.lower())(route)
+
+    async def test_authenticate_success(self, auth_mock, data_requests, make_request, test_config):
+        if self.auth_type == "user":
+            auth_mock.mock(
+                return_value=httpx.Response(
+                    200, json={"authenticated": True, "user": {"user_name": data_requests[0]["user"]}}
+                )
+            )
+        else:
+            auth_mock.mock(
+                return_value=httpx.Response(
+                    200, json={"authenticated": True, "user": {"group_names": [test_config.magpie_admin_group]}}
+                )
+            )
+        response = await make_request
+        # note that 422 is ok here because we're just checking that the authentication worked, not that the
+        # request was well formed otherwise
+        assert response.status_code < 300 or response.status_code == 422
+
+    async def test_authenticate_failure_unauthorized(self, auth_mock, make_request):
+        auth_mock.mock(return_value=httpx.Response(200, json={"authenticated": False}))
+        response = await make_request
+        assert response.status_code == 403
+
+    async def test_authenticate_failure_upstream(self, auth_mock, make_request):
+        auth_mock.mock(return_value=httpx.Response(500, json={}))
+        response = await make_request
+        assert response.status_code == 403
+
+
+class _TestUser(_TestAuthEnabled):
+    auth_type: str = "user"
+
     @pytest.fixture
     def member_route(self, data_requests):
-        return f"/v1/users/{data_requests[0]['user']}/data-requests/{data_requests[0]['_id']}"
+        return (
+            f"/v1/users/{data_requests[0]['user']}/data-requests/{data_requests[0].get('_id', 'should not get here')}"
+        )
 
     @pytest.fixture
     def collection_route(self, data_requests):
         return f"/v1/users/{data_requests[0]['user']}/data-requests/"
 
+    async def test_authenticate_failure_different_user(self, auth_mock, data_requests, make_request):
+        auth_mock.mock(
+            return_value=httpx.Response(
+                200, json={"authenticated": True, "user": {"user_name": data_requests[0]["user"] + "suffix"}}
+            )
+        )
+        response = await make_request
+        assert response.status_code == 403
 
-class _TestAdmin:
+
+class _TestAdmin(_TestAuthEnabled):
+    auth_type: str = "admin"
+
     @pytest.fixture
     def member_route(self, data_requests):
-        return f"/v1/admin/data-requests/{data_requests[0]['_id']}"
+        return f"/v1/admin/data-requests/{data_requests[0].get('_id', 'should not get here')}"
 
     @pytest.fixture
     def collection_route(self):
         return "/v1/admin/data-requests/"
 
+    async def test_authenticate_failure_not_admin(self, auth_mock, make_request):
+        auth_mock.mock(return_value=httpx.Response(200, json={"authenticated": True, "user": {"group_names": []}}))
+        response = await make_request
+        assert response.status_code == 403
+
 
 class _TestGet:
     n_data_requests = 2
+    request_method = "get"
 
     @pytest.fixture(scope="class", autouse=True)
     @classmethod
@@ -66,7 +128,9 @@ class _TestGet:
         yield await client.db.get_collection("data-request").find({}).to_list()
 
 
-class _TestGetOne(_TestGet):
+class _TestGetOne(_TestGet, _TestAuthEnabled):
+    request_path_type = "member"
+
     async def test_get(self, async_client, data_requests, member_route):
         resp = await async_client.get(member_route)
         assert resp.status_code == 200
@@ -97,6 +161,7 @@ class TestGetOneAdmin(_TestGetOne, _TestAdmin): ...
 
 
 class _TestGetMany(_TestGet):
+    request_path_type = "collection"
     default_link_limit = inspect.signature(get_data_requests).parameters["limit"].default
     n_data_requests = default_link_limit * 2 + 2
     n_data_requests_return_count: int
@@ -255,6 +320,9 @@ class TestGetManyAdmin(_TestGetMany, _TestAdmin):
 
 
 class _TestPost:
+    request_method = "post"
+    request_path_type = "collection"
+
     @pytest.fixture
     def data_requests(self):
         return [{"user": "user1"}]
@@ -293,7 +361,9 @@ class TestPostAdmin(_TestPost, _TestAdmin):
 
 
 class _TestUpdate:
-    @pytest.fixture
+    request_path_type = "member"
+
+    @pytest.fixture(autouse=True)
     async def loaded_data(self, fake):
         model = json.loads(fake.data_request().model_dump_json())
         resp = await client.db.get_collection("data-request").insert_one(model)
@@ -307,6 +377,8 @@ class _TestUpdate:
 
 
 class _TestPatch(_TestUpdate):
+    request_method = "patch"
+
     async def test_valid(self, loaded_data, async_client, fake, member_route):
         title = fake.sentence()
         update = {"title": title}
@@ -409,6 +481,8 @@ class TestPatchAdmin(_TestPatch, _TestAdmin):
 
 
 class _TestDelete(_TestUpdate):
+    request_method = "delete"
+
     async def test_exists(self, loaded_data, async_client, member_route):
         response = await async_client.delete(member_route)
         assert response.status_code == 204

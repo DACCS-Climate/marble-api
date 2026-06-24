@@ -1,7 +1,7 @@
-import os
-
 from pymongo import AsyncMongoClient
 from pymongo.asynchronous.database import AsyncDatabase
+
+from marble_api._config import config
 
 
 class Client(AsyncMongoClient):
@@ -17,4 +17,4 @@ class Client(AsyncMongoClient):
         return self.get_default_database()
 
 
-client = Client(os.environ["MONGODB_URI"], tz_aware=True)
+client = Client(str(config.mongodb_uri), tz_aware=True)
