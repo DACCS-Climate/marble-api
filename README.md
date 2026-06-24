@@ -8,19 +8,36 @@ An API for the Marble platform.
 
 ## Authentication and Authorization
 
-Marble API does not do any authentication or authorization (authn/z). That is left to other
-applications (such as [Magpie](https://github.com/ouranosinc/magpie)).
+Marble API uses [Magpie](https://github.com/ouranosinc/magpie) for authentication.
 
-Marble API assumes that only users with administrator access should be able to access all routes
-prefixed with `/vX/admin/` (where `X` is a version number).
+Authentication is enforced for the following routes:
 
-Marble API also assumes that only users with a given user name or id `Y` should be able to access
-all routes prefixed with `/vX/users/Y/` (where `X` is a version number).
+- admin routes: `/vX/admin/` (where `X` is a version number)
+- user routes: `/vX/users/Y/` (where `X` is a version number and `Y` is a user name)
+
+Only users who belong to the group named "administrators" in Magpie will have access to
+the admin routes. Only users whose Magpie user name matches the `Y` in user routes will
+have access to the given user route.
+
+Authn/z can be configured with the following environment variables:
+
+- `MARBLE_API_MAGPIE_AUTH_ENABLED`
+    - default: `True`
+    - type: boolean
+    - set to `False` to disable authentication entirely (this is not recommended in a production environment)
+- `MARBLE_API_MAGPIE_URL`
+    - default: `None`
+    - type: string (URL format)
+    - set to the URL for the Magpie instance used to authenticate users
+- `MARBLE_API_MAGPIE_ADMIN_GROUP`
+    - default: `administrators`
+    - type: string
+    - change this if you want a different Magpie group to be have access to the admin routes
 
 When integrating Marble API with the [birdhouse](https://github.com/bird-house/birdhouse-deploy/) platform we
 recommend enabling it with the 
 [Marble API component](https://github.com/DACCS-Climate/marble-config/tree/main/components/marble-api). 
-This enables the basic authn/z rules described above through [Magpie](https://github.com/ouranosinc/magpie).
+This sets default environment variables that will work with most birdhouse deployments.
 
 ## Developing
 
@@ -28,7 +45,7 @@ To start a development server:
 
 ```sh
 python3 -m pip install .[dev]
-MONGODB_URI="mongodb://localhost:27017" fastapi dev marble_api
+MARBLE_API_MONGODB_URI="mongodb://localhost:27017" fastapi dev marble_api
 ```
 
 This assumes that you have a mongodb service running at `mongodb://localhost:27017`.
@@ -86,7 +103,7 @@ To run tests:
 
 ```sh
 python3 -m pip install .[dev]
-MONGODB_URI="mongodb://localhost:27017" pytest ./test
+MARBLE_API_MONGODB_URI="mongodb://localhost:27017" pytest ./test
 ```
 
 This assumes that you have a mongodb service running at `mongodb://localhost:27017`.

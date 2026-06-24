@@ -3,11 +3,17 @@ services:
     image: python:3.13-alpine
     volumes:
       - .:/app
+      - marble-api-venv:/marble-api/venv
     working_dir: /app
-    command: ["sh", "-c", "pip install -e .[dev,test] && fastapi dev marble_api --host 0.0.0.0"]
+    command: ["sh", "-c", "python -m venv /marble-api/venv && pip install -e .[dev,test] && fastapi dev marble_api --host 0.0.0.0"]
     environment:
-      - MONGODB_URI=mongodb://mongo:27017
+      - PATH=/marble-api/venv/bin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      - MARBLE_API_MONGODB_URI=mongodb://mongo:27017
+      - MARBLE_API_MAGPIE_AUTH_ENABLED=false
     ports:
       - 8000:8000
   mongo:
     image: mongo:5.0.4
+
+volumes:
+  marble-api-venv:

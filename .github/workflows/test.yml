@@ -3,7 +3,7 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
 env:
-  MONGODB_URI: mongodb://localhost:27017
+  MARBLE_API_MONGODB_URI: mongodb://localhost:27017
 jobs:
   test:
     if: github.event.pull_request.draft == false
