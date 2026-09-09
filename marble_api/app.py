@@ -6,6 +6,7 @@ from marble_api.versions.v1 import router as v1_router
 
 _metadata = metadata.metadata("marble_api").json
 
+
 app = FastAPI(
     title=_metadata["name"],
     version=_metadata["version"],

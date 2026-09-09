@@ -8,7 +8,7 @@ from marble_api.database import client
 
 
 @pytest.fixture(scope="session", autouse=True)
-def init_test_db():
+async def init_test_db():
     # use different default database name from prod/dev in order to minimize the chance
     # of accidentally using a prod/dev database.
     client.get_default_database = functools.partial(client.get_default_database, default="marble-api-test")
@@ -17,9 +17,9 @@ def init_test_db():
 @pytest.fixture(scope="session", autouse=True)
 async def check_empty_test_db(init_test_db):
     database = client.db
-    if await database.list_collection_names():
+    if collections := await database.list_collection_names():
         raise RuntimeError(
-            f"Database {database.name} contains some collections. Tests must be run on an empty database."
+            f"Database {database.name} contains some collections: {collections}. Tests must be run on an empty database."
         )
 
 
