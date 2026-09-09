@@ -1,7 +1,9 @@
-from copy import deepcopy
+import re
+from contextlib import suppress
 from typing import Annotated, Any
 
 import bson
+from bson.regex import Regex as BsonRegex
 from pydantic import (
     AwareDatetime,
     BaseModel,
@@ -9,53 +11,27 @@ from pydantic import (
     ConfigDict,
     Field,
     FieldSerializationInfo,
+    PydanticUndefinedAnnotation,
     computed_field,
-    create_model,
     field_serializer,
 )
-from pydantic.fields import FieldInfo
 from pydantic.json_schema import SkipJsonSchema
 
-PyObjectId = Annotated[str, BeforeValidator(str)]
 
-
-def partial_model(model: type[BaseModel]) -> type[BaseModel]:
+def _convert_bson_regex(value: Any) -> str | re.Pattern:  # noqa: ANN401
     """
-    Make all fields in a BaseModel class optional.
+    Convert bson.regex.Regex to a python re.Pattern.
 
-    This makes each field's default None but does not update the annotation or
-    validations so explicitly setting the value to None may still raise a
-    validation error. Also, if a field has validate_default=True this will
-    make validate_default=False for the partial model to ensure that the new
-    (None) default value is not validated.
-
-    >>> class C(BaseModel):
-          a: int
-    >>> C(a=2).a
-    2
-    >>> C()  # validation error since a must be an integer
-    >>> @partial_model
-    ... class B(C): ...
-    >>> B().a  # is None
-    >>> B(a=5).a
-    5
-    >>> B(a=None)  # validation error since a must be an integer
-
-    Adapted from https://stackoverflow.com/a/76560886/5992438
+    MongoDB will return regular expressions as bson.regex.Regex which
+    pydantic doensn't know how to convert to a re.Pattern without help.
     """
+    if isinstance(value, BsonRegex):
+        return value.try_compile()
+    return value
 
-    def make_field_optional(field: FieldInfo) -> tuple[Any, FieldInfo]:
-        new_field = deepcopy(field)
-        new_field.validate_default = False
-        new_field.default = None
-        return new_field.annotation, new_field
 
-    return create_model(
-        model.__name__,
-        __base__=model,
-        __module__=model.__module__,
-        **{name: make_field_optional(info) for name, info in model.model_fields.items()},
-    )
+type PyObjectId = Annotated[str, BeforeValidator(str)]
+type Pattern = Annotated[re.Pattern, BeforeValidator(_convert_bson_regex)]
 
 
 def object_id(id_: str, error: Exception | None) -> bson.ObjectId:
@@ -71,6 +47,27 @@ def object_id(id_: str, error: Exception | None) -> bson.ObjectId:
             raise error from err
 
 
+class PartialModel(BaseModel):
+    """Superclass for partial models (all fields are optional)."""
+
+    @classmethod
+    def __pydantic_init_subclass__(cls, **kwargs) -> None:
+        """
+        Make all models that this model a "partial model".
+
+        Partial models make all fields optional.
+
+        This sets all fields to have a default value of None but don't update the annotation
+        so that fields can't explicitly be set to None.
+        """
+        super().__pydantic_init_subclass__(**kwargs)
+        for field in cls.model_fields.values():
+            field.default = None
+
+        with suppress(PydanticUndefinedAnnotation):
+            cls.model_rebuild(force=True)
+
+
 class MarbleBaseModel(BaseModel):
     """
     Base model for all database models used in this repo.
@@ -83,19 +80,15 @@ class MarbleBaseModel(BaseModel):
 
     id: SkipJsonSchema[PyObjectId | None] = Field(default=None, validation_alias="_id", exclude=True)
     updated: SkipJsonSchema[AwareDatetime | None] = None  # updated should set by the route
-    model_config = ConfigDict(validate_by_name=True, arbitrary_types_allowed=True)
+    model_config = ConfigDict(validate_by_name=True, arbitrary_types_allowed=True, validate_assignment=True)
 
 
-class MarbleBaseModelUpdate(MarbleBaseModel):
+class MarbleBaseModelUpdate(PartialModel, MarbleBaseModel):
     """
     Base model for update models in this repo.
 
-    Sets the model_config without validate_by_name=True to ensure that the id cannot easily be overwritten.
-
-    NOTE: the child class that inherits from this should also be decorated with the partial_model function
+    Ensures that subclasses of this model are partial models (all fields are optional)
     """
-
-    model_config = ConfigDict(arbitrary_types_allowed=True, json_encoders={bson.ObjectId: str})
 
 
 class MarbleBaseModelPublic(MarbleBaseModel):
@@ -103,6 +96,9 @@ class MarbleBaseModelPublic(MarbleBaseModel):
     Base model for public models (visible to the end user) in this repo.
 
     Makes the id and updated fields visible and creates a computed field for model creation time.
+
+    Sets extra=allow so additional data can be added to models returned by route methods.
+    Does not set validate_assignment=True to allow flexibility when routes add/update data.
     """
 
     id: Annotated[str, BeforeValidator(str)] = Field(..., validation_alias="_id")
@@ -125,9 +121,10 @@ class MarbleUserModel(MarbleBaseModel):
     user: SkipJsonSchema[str | None] = None  # user is set by the route after the model is first validated
 
     @field_serializer("user")
-    def require_user_set(self, value: str, info: FieldSerializationInfo) -> str:
+    def require_user_set(self, value: str, info: FieldSerializationInfo) -> SkipJsonSchema[str]:
         """Require that the user name be set when the model is serialized."""
-        assert value, f"{info.field_name} must be set and non-empty"
+        if not value:
+            raise ValueError(f"{info.field_name} must be set and non-empty")
         return value
 
 
@@ -138,4 +135,11 @@ class MarbleUserModelUpdate(MarbleBaseModelUpdate, MarbleUserModel):
 class MarbleUserModelPublic(MarbleBaseModelPublic, MarbleUserModel):
     """Base model for public models associated with a user."""
 
-    user: str  # user is required to be set in the database
+    user: str = Field(..., min_length=1)  # user is required to be set in the database
+
+    # NOTE: this must be redeclared so that the return annotation can be modified to
+    #       allow the user field to show up in the JSON schema.
+    @field_serializer("user")
+    def require_user_set(self, value: str, info: FieldSerializationInfo) -> str:
+        """Require that the user name be set when the model is serialized."""
+        return super().require_user_set(value, info)

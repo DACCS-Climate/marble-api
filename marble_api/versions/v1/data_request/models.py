@@ -32,7 +32,6 @@ from marble_api.utils.models import (
     MarbleUserModel,
     MarbleUserModelPublic,
     MarbleUserModelUpdate,
-    partial_model,
 )
 
 Temporal = Annotated[list[AwareDatetime], Field(..., min_length=1, max_length=2), AfterValidator(sorted)]
@@ -68,8 +67,9 @@ class DataRequest(MarbleUserModel):
     @classmethod
     def min_length_if_set(cls, value: Sized | None, info: ValidationInfo) -> Sized | None:
         """Raise an error if the value is not None and is empty."""
-        assert value is None or len(value), f"{info.field_name} must be None or non-empty"
-        return value
+        if value is None or len(value):
+            return value
+        raise ValueError(f"{info.field_name} must be None or non-empty")
 
     @field_validator("geometry")
     @classmethod
@@ -83,7 +83,10 @@ class DataRequest(MarbleUserModel):
     def get_tz_offset(self) -> Self:
         """Store the timezone offset for the temporal data."""
         if self.temporal is not None:
-            self.tz_offset = [datetime.datetime.utcoffset(t).total_seconds() for t in self.temporal]
+            offsets = [datetime.datetime.utcoffset(t).total_seconds() for t in self.temporal]
+            if offsets != self.tz_offset:
+                # check first to avoid infinite recursion when validate_assignment=True
+                self.tz_offset = offsets
         return self
 
     @field_serializer("temporal")
@@ -95,7 +98,6 @@ class DataRequest(MarbleUserModel):
         ]
 
 
-@partial_model
 class DataRequestUpdate(MarbleUserModelUpdate, DataRequest):
     """
     Update model for Data Requests.
