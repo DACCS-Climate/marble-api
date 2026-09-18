@@ -2,12 +2,15 @@ import datetime
 
 import pytest
 from pydantic import TypeAdapter, ValidationError
-from pydantic_core import PydanticSerializationError
 from pystac import Item
 
 from marble_api.utils.geojson import collapse_geometries
-from marble_api.utils.models import object_id
-from marble_api.versions.v1.data_request.models import Author, DataRequestUpdate
+from marble_api.versions.v1.data_request.models import Author
+
+# import like this to avoid re-running test classes that start with Test...
+from .....unit.utils.test_models import TestMarbleUserModel as _TestMarbleUserModel
+from .....unit.utils.test_models import TestMarbleUserModelPublic as _TestMarbleUserModelPublic
+from .....unit.utils.test_models import TestMarbleUserModelUpdate as _TestMarbleUserModelUpdate
 
 
 class TestAuthor:
@@ -27,13 +30,10 @@ class TestAuthor:
             self.validator.validate_python(author)
 
 
-class TestDataRequest:
+class _TestDataRequest:
     @pytest.fixture
     def fake_class(self, fake):
         return fake.data_request
-
-    def test_id_dumped(self, fake_class):
-        assert "id" not in fake_class().model_dump()
 
     @pytest.mark.parametrize("field", ["title", "description", "authors", "assets", "contact"])
     def test_text_fields_not_empty(self, fake_class, field):
@@ -56,13 +56,6 @@ class TestDataRequest:
         with pytest.raises(ValidationError):
             fake_class(**{field: None})
 
-    @pytest.mark.parametrize("value", [None, ""])
-    def test_user_field_present_when_serialized(self, fake_class, value):
-        model = fake_class()
-        model.user = value
-        with pytest.raises(PydanticSerializationError):
-            model.model_dump()
-
     @pytest.mark.parametrize(
         "field",
         [
@@ -73,9 +66,6 @@ class TestDataRequest:
     def test_fields_default_if_unset(self, fake_class, field):
         request = fake_class(unset=[field])
         assert request.model_dump()[field] == type(request).model_fields[field].default
-
-    def test_id_is_str(self, fake_class):
-        assert isinstance(fake_class().id, str)
 
     def test_temporal_sorted(self, fake_class):
         now = datetime.datetime.now(tz=datetime.timezone.utc)
@@ -92,18 +82,13 @@ class TestDataRequest:
             fake_class(geometry=fake.uncollapsible_geojson())
 
 
-class TestDataRequestPublic(TestDataRequest):
+class TestDataRequest(_TestDataRequest, _TestMarbleUserModel): ...
+
+
+class TestDataRequestPublic(_TestDataRequest, _TestMarbleUserModelPublic):
     @pytest.fixture
     def fake_class(self, fake):
         return fake.data_request_public
-
-    def test_id_dumped(self, fake_class):
-        assert "id" in fake_class().model_dump()
-
-    def test_created(self, fake_class):
-        model = fake_class()
-        assert model.created
-        assert object_id(model.id, None).generation_time == model.created
 
     class TestStacItem:
         def test_valid(self, fake_class):
@@ -170,13 +155,7 @@ class TestDataRequestPublic(TestDataRequest):
             assert request.id == request.stac_item["id"]
 
 
-class TestDataRequestUpdate(TestDataRequest):
+class TestDataRequestUpdate(_TestDataRequest, _TestMarbleUserModelUpdate):
     @pytest.fixture
     def fake_class(self, fake):
         return fake.data_request_update
-
-    def test_all_fields_optional(self):
-        DataRequestUpdate()
-
-    def test_all_defaults_none(self):
-        assert all(field.default is None for field in DataRequestUpdate.model_fields.values())

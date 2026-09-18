@@ -5,9 +5,10 @@ import os
 os.environ["MARBLE_API_MAGPIE_AUTH_ENABLED"] = "false"
 
 import pytest
-from faker_providers import DataRequestProvider, GeoJsonProvider
 
 from marble_api._config import config
+
+from .faker_providers import DataRequestProvider, GeoJsonProvider, SurveyProvider
 
 
 @pytest.fixture(scope="session")
@@ -17,7 +18,11 @@ def anyio_backend():
 
 @pytest.fixture(scope="session")
 def faker_providers():
-    return {"DataRequestProvider": DataRequestProvider, "GeoJsonProvider": GeoJsonProvider}
+    return {
+        "DataRequestProvider": DataRequestProvider,
+        "GeoJsonProvider": GeoJsonProvider,
+        "SurveyProvider": SurveyProvider,
+    }
 
 
 @pytest.fixture

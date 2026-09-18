@@ -3,7 +3,6 @@ from collections.abc import Sized
 from datetime import timezone
 from typing import Required, Self, TypedDict
 
-from bson import ObjectId
 from pydantic import (
     AfterValidator,
     AwareDatetime,
@@ -13,12 +12,10 @@ from pydantic import (
     Field,
     FieldSerializationInfo,
     ValidationInfo,
-    computed_field,
     field_serializer,
     field_validator,
     model_validator,
 )
-from pydantic.functional_validators import BeforeValidator
 from pydantic.json_schema import SkipJsonSchema
 from stac_pydantic.item import Item
 from stac_pydantic.links import Links
@@ -31,9 +28,12 @@ from marble_api.utils.geojson import (
     collapse_geometries,
     validate_collapsible,
 )
-from marble_api.utils.models import object_id, partial_model
+from marble_api.utils.models import (
+    MarbleUserModel,
+    MarbleUserModelPublic,
+    MarbleUserModelUpdate,
+)
 
-PyObjectId = Annotated[str, BeforeValidator(str)]
 Temporal = Annotated[list[AwareDatetime], Field(..., min_length=1, max_length=2), AfterValidator(sorted)]
 
 
@@ -45,16 +45,13 @@ class Author(TypedDict, total=False):
     email: EmailStr | None = None
 
 
-class DataRequest(BaseModel):
+class DataRequest(MarbleUserModel):
     """
     Database model for Data Requests.
 
     This object contains the representation of the data in the database.
     """
 
-    id: SkipJsonSchema[PyObjectId | None] = Field(default=None, validation_alias="_id", exclude=True)
-    user: SkipJsonSchema[str | None] = None  # user is set by the route after the model is first validated
-    updated: SkipJsonSchema[AwareDatetime | None] = None  # updated is set by the route
     title: str
     description: str | None = None
     authors: list[Author]
@@ -65,14 +62,14 @@ class DataRequest(BaseModel):
     assets: dict[str, Asset]
     contact: EmailStr
     extra_properties: dict[str, str] = {}
-    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
 
     @field_validator("title", "description", "authors", "assets", "contact")
     @classmethod
     def min_length_if_set(cls, value: Sized | None, info: ValidationInfo) -> Sized | None:
         """Raise an error if the value is not None and is empty."""
-        assert value is None or len(value), f"{info.field_name} must be None or non-empty"
-        return value
+        if value is None or len(value):
+            return value
+        raise ValueError(f"{info.field_name} must be None or non-empty")
 
     @field_validator("geometry")
     @classmethod
@@ -86,7 +83,10 @@ class DataRequest(BaseModel):
     def get_tz_offset(self) -> Self:
         """Store the timezone offset for the temporal data."""
         if self.temporal is not None:
-            self.tz_offset = [datetime.datetime.utcoffset(t).total_seconds() for t in self.temporal]
+            offsets = [datetime.datetime.utcoffset(t).total_seconds() for t in self.temporal]
+            if offsets != self.tz_offset:
+                # check first to avoid infinite recursion when validate_assignment=True
+                self.tz_offset = offsets
         return self
 
     @field_serializer("temporal")
@@ -97,15 +97,8 @@ class DataRequest(BaseModel):
             for i, t in enumerate(value)
         ]
 
-    @field_serializer("user")
-    def require_user_set(self, value: str, info: FieldSerializationInfo) -> str:
-        """Require that the user name be set when the model is serialized."""
-        assert value, f"{info.field_name} must be set and non-empty"
-        return value
 
-
-@partial_model
-class DataRequestUpdate(DataRequest):
+class DataRequestUpdate(MarbleUserModelUpdate, DataRequest):
     """
     Update model for Data Requests.
 
@@ -113,25 +106,15 @@ class DataRequestUpdate(DataRequest):
     Fields should be optional unless they *must* be updated every time a change is made.
     """
 
-    model_config = ConfigDict(arbitrary_types_allowed=True, json_encoders={ObjectId: str})
 
-
-class DataRequestPublic(DataRequest):
+class DataRequestPublic(MarbleUserModelPublic, DataRequest):
     """
     Public model for Data Requests.
 
     This allows for the id field to be included in the response extra fields (like stac_item) so that they can be visible in API responses.
     """
 
-    id: Annotated[str, BeforeValidator(str)] = Field(..., validation_alias="_id")
-    user: str  # user is required to be set in the database
-    updated: AwareDatetime
     model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True, extra="allow")
-
-    @computed_field
-    def created(self) -> AwareDatetime:
-        """Set the created time based on the object id."""
-        return object_id(self.id, None).generation_time
 
     @property
     def stac_item(self) -> Item:

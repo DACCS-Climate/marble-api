@@ -54,3 +54,6 @@ convention = "numpy"
 markers = [
     "no_db_cleanup: tests with this mark will not clean up the database immediately after the test."
 ]
+addopts = [
+    "--import-mode=importlib",
+]

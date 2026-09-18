@@ -1,11 +1,7 @@
-import datetime
 import inspect
 import json
-from typing import Literal
-from urllib.parse import parse_qs, urlparse
 
 import bson
-import httpx
 import pytest
 from stac_pydantic import Item
 
@@ -13,146 +9,77 @@ from marble_api.database import client
 from marble_api.versions.v1.data_request.models import DataRequestPublic
 from marble_api.versions.v1.data_request.routes import get_data_requests
 
+from .....integration.utils._test_auth import AdminAuthTest, UserAuthTest
+from .....integration.utils._test_routes import (
+    GetManyTest,
+    PreloadData,
+    UpdateTest,
+    assert_db_not_changed,
+    compare_no_timestamps,
+)
+
 pytestmark = pytest.mark.anyio
 
 
-def compare_no_timestamps(dict1, dict2, message=""):
-    timestamps = {"created", "updated"}
-    assert {k: v for k, v in dict1.items() if k not in timestamps} == {
-        k: v for k, v in dict2.items() if k not in timestamps
-    }, message
-
-
-class _TestAuthEnabled:
-    request_method: str
-    request_path_type: Literal["member", "collection"]
-    auth_type: Literal["user", "admin"]
+class _TestUser(UserAuthTest):
+    @pytest.fixture
+    def user(self, records):
+        return records[0]["user"]
 
     @pytest.fixture
-    async def make_request(self, async_client, member_route, collection_route):
-        route = member_route if self.request_path_type == "member" else collection_route
-        return getattr(async_client, self.request_method.lower())(route)
-
-    async def test_authenticate_success(self, auth_mock, data_requests, make_request, test_config):
-        if self.auth_type == "user":
-            auth_mock.mock(
-                return_value=httpx.Response(
-                    200, json={"authenticated": True, "user": {"user_name": data_requests[0]["user"]}}
-                )
-            )
-        else:
-            auth_mock.mock(
-                return_value=httpx.Response(
-                    200, json={"authenticated": True, "user": {"group_names": [test_config.magpie_admin_group]}}
-                )
-            )
-        response = await make_request
-        # note that 422 is ok here because we're just checking that the authentication worked, not that the
-        # request was well formed otherwise
-        assert response.status_code < 300 or response.status_code == 422
-
-    async def test_authenticate_failure_unauthorized(self, auth_mock, make_request):
-        auth_mock.mock(return_value=httpx.Response(200, json={"authenticated": False}))
-        response = await make_request
-        assert response.status_code == 403
-
-    async def test_authenticate_failure_upstream(self, auth_mock, make_request):
-        auth_mock.mock(return_value=httpx.Response(500, json={}))
-        response = await make_request
-        assert response.status_code == 403
-
-
-class _TestUser(_TestAuthEnabled):
-    auth_type: str = "user"
+    def member_route(self, records, user):
+        return f"/v1/users/{user}/data-requests/{records[0].get('_id', 'should not get here')}"
 
     @pytest.fixture
-    def member_route(self, data_requests):
-        return (
-            f"/v1/users/{data_requests[0]['user']}/data-requests/{data_requests[0].get('_id', 'should not get here')}"
-        )
+    def collection_route(self, user):
+        return f"/v1/users/{user}/data-requests/"
 
+
+class _TestAdmin(AdminAuthTest):
     @pytest.fixture
-    def collection_route(self, data_requests):
-        return f"/v1/users/{data_requests[0]['user']}/data-requests/"
-
-    async def test_authenticate_failure_different_user(self, auth_mock, data_requests, make_request):
-        auth_mock.mock(
-            return_value=httpx.Response(
-                200, json={"authenticated": True, "user": {"user_name": data_requests[0]["user"] + "suffix"}}
-            )
-        )
-        response = await make_request
-        assert response.status_code == 403
-
-
-class _TestAdmin(_TestAuthEnabled):
-    auth_type: str = "admin"
-
-    @pytest.fixture
-    def member_route(self, data_requests):
-        return f"/v1/admin/data-requests/{data_requests[0].get('_id', 'should not get here')}"
+    def member_route(self, records):
+        return f"/v1/admin/data-requests/{records[0].get('_id', 'should not get here')}"
 
     @pytest.fixture
     def collection_route(self):
         return "/v1/admin/data-requests/"
 
-    async def test_authenticate_failure_not_admin(self, auth_mock, make_request):
-        auth_mock.mock(return_value=httpx.Response(200, json={"authenticated": True, "user": {"group_names": []}}))
-        response = await make_request
-        assert response.status_code == 403
 
-
-class _TestGet:
-    n_data_requests = 2
+class _TestGet(PreloadData):
     request_method = "get"
-
-    @pytest.fixture(scope="class", autouse=True)
-    @classmethod
-    async def load_data(cls, fake):
-        data = [fake.data_request(user="user1").model_dump() for _ in range(cls.n_data_requests // 2)] + [
-            fake.data_request(user="user2").model_dump() for _ in range(cls.n_data_requests - cls.n_data_requests // 2)
-        ]
-        await client.db.get_collection("data-request").insert_many(data)
-
-    @pytest.fixture(scope="class", autouse=True)
-    @classmethod
-    async def cleanup(cls):
-        try:
-            yield
-        finally:
-            await client.drop_database(client.db.name)
+    collection_name = "data-request"
 
     @pytest.fixture(scope="class")
     @classmethod
-    async def data_requests(cls):
-        yield await client.db.get_collection("data-request").find({}).to_list()
+    def fake_class(cls, fake):
+        return fake.data_request
 
 
-class _TestGetOne(_TestGet, _TestAuthEnabled):
+class _TestGetOne(_TestGet):
     request_path_type = "member"
 
-    async def test_get(self, async_client, data_requests, member_route):
-        resp = await async_client.get(member_route)
+    async def test_get(self, async_client, records, member_route):
+        resp = await assert_db_not_changed(async_client.get(member_route), self.collection_name)
         assert resp.status_code == 200
-        assert DataRequestPublic(**data_requests[0]).model_dump() == DataRequestPublic(**resp.json()).model_dump()
+        assert DataRequestPublic(**records[0]).model_dump() == DataRequestPublic(**resp.json()).model_dump()
 
     async def test_get_stac(self, async_client, member_route):
-        resp = await async_client.get(f"{member_route}?stac=true")
+        resp = await assert_db_not_changed(async_client.get(f"{member_route}?stac=true"), self.collection_name)
         assert resp.status_code == 200
         assert (item := resp.json().get("stac_item"))
         Item(**item)
 
     async def test_bad_id(self, async_client, member_route):
         invalid_route = "/".join(member_route.split("/")[:-1] + ["some-bad-id"])
-        resp = await async_client.get(invalid_route)
+        resp = await assert_db_not_changed(async_client.get(invalid_route), self.collection_name)
         assert resp.status_code == 404
 
 
 @pytest.mark.no_db_cleanup
 class TestGetOneUser(_TestGetOne, _TestUser):
-    async def test_bad_user(self, async_client, data_requests):
-        invalid_route = f"/v1/users/{data_requests[0]['user'] + '-bad-user'}/data-requests/{data_requests[0]['_id']}"
-        resp = await async_client.get(invalid_route)
+    async def test_bad_user(self, async_client, records):
+        invalid_route = f"/v1/users/{records[0]['user'] + '-bad-user'}/data-requests/{records[0]['_id']}"
+        resp = await assert_db_not_changed(async_client.get(invalid_route), self.collection_name)
         assert resp.status_code == 404
 
 
@@ -160,186 +87,74 @@ class TestGetOneUser(_TestGetOne, _TestUser):
 class TestGetOneAdmin(_TestGetOne, _TestAdmin): ...
 
 
-class _TestGetMany(_TestGet):
+class _TestGetMany(_TestGet, GetManyTest):
     request_path_type = "collection"
     default_link_limit = inspect.signature(get_data_requests).parameters["limit"].default
-    n_data_requests = default_link_limit * 2 + 2
-    n_data_requests_return_count: int
+    n_records = default_link_limit * 2 + 2
+    n_records_return_count: int
+    records_key = "data_requests"
+    sort_keys = ("id", "user", "contact", "title", "created", "updated")
 
-    async def get_all_data(self, async_client, route):
-        response = await async_client.get(route)
-        data = []
-        while True:
-            data.extend(response.json()["data_requests"])
-            for link in response.json()["links"]:
-                if link["rel"] == "next":
-                    response = await async_client.get(link["href"])
-                    break
-            else:
-                break
-        return data
+    async def test_get(self, async_client, records, collection_route):
+        response = await assert_db_not_changed(async_client.get(collection_route), self.collection_name)
 
-    async def test_get(self, async_client, data_requests, collection_route):
-        response = await async_client.get(collection_route)
-        models = {str(req["_id"]): DataRequestPublic(**req).model_dump() for req in data_requests}
+        models = {str(req["_id"]): DataRequestPublic(**req).model_dump() for req in records}
         for req in response.json()["data_requests"]:
             assert DataRequestPublic(**req).model_dump() == models[req["id"]]
 
     async def test_get_stac(self, async_client, collection_route):
-        resp = await async_client.get(f"{collection_route}?stac=true")
+        resp = await assert_db_not_changed(async_client.get(f"{collection_route}?stac=true"), self.collection_name)
+
         for req in resp.json()["data_requests"]:
             assert (item := req.get("stac_item"))
             Item(**item)
 
-    async def test_get_limit_default(self, async_client, collection_route):
-        response = await async_client.get(collection_route)
-        assert len(response.json()["data_requests"]) == self.default_link_limit
-
-    async def test_get_limit_non_default(self, async_client, collection_route):
-        response = await async_client.get(f"{collection_route}?limit=5")
-        assert len(response.json()["data_requests"]) == 5
-
-    async def test_get_limit_more(self, async_client, collection_route):
-        response = await async_client.get(f"{collection_route}?limit={self.n_data_requests + 1}")
-        assert len(response.json()["data_requests"]) == self.n_data_requests_return_count
-
-    async def test_get_limit_none(self, async_client, collection_route):
-        response = await async_client.get(f"{collection_route}?limit=0")
-        assert response.status_code == 422
-
-    async def test_get_limit_over_max(self, async_client, collection_route):
-        response = await async_client.get(f"{collection_route}?limit=200")
-        assert response.status_code == 422
-
-    @pytest.mark.parametrize("sort_by", ["id", "user", "contact", "title", "created", "updated"])
-    @pytest.mark.parametrize("ascending", [True, False])
-    async def test_sort_order_single_page(self, async_client, collection_route, sort_by, ascending):
-        response = await async_client.get(f"{collection_route}?sort_by={sort_by}&ascending={ascending}")
-        data = [req[sort_by] for req in response.json()["data_requests"]]
-        assert data == sorted(data, reverse=(not ascending))
-
-    @pytest.mark.parametrize("sort_by", ["id", "user", "contact", "title", "created", "updated"])
-    @pytest.mark.parametrize("ascending", [True, False])
-    async def test_sort_order_multi_page(self, async_client, collection_route, sort_by, ascending):
-        data = await self.get_all_data(async_client, f"{collection_route}?sort_by={sort_by}&ascending={ascending}")
-        data = [(req[sort_by], req["id"]) for req in data]
-        assert len(data) == self.n_data_requests_return_count  # all data found
-        assert len(data) == len(set(data))  # no duplicates
-        assert data == sorted(data, reverse=(not ascending))  # in correct order
-
-    async def test_get_first_page_links(self, async_client, collection_route):
-        response = await async_client.get(collection_route)
-        links = response.json()["links"]
-        assert len(links) == 1
-        link = links[0]
-        assert link["rel"] == "next"
-        assert link["type"] == "application/json"
-        assert link["href"].startswith(str(response.url))
-        assert (after_id := parse_qs(urlparse(link["href"]).query).get("after"))
-        assert after_id not in [r["id"] for r in response.json()["data_requests"]]
-
-    async def test_get_last_page_links(self, async_client, collection_route):
-        response = await async_client.get(f"{collection_route}?limit={self.n_data_requests_return_count - 3}")
-        next_link = next(link for link in response.json()["links"] if link["rel"] == "next")
-        response2 = await async_client.get(next_link["href"])
-        links = response2.json()["links"]
-        assert len(links) == 1
-        link = links[0]
-        assert link["rel"] == "prev"
-        assert link["type"] == "application/json"
-        assert link["href"].startswith(str(response.url))
-        assert (before_id := parse_qs(urlparse(link["href"]).query).get("before"))
-        assert before_id not in [r["id"] for r in response.json()["data_requests"]]
-
-    async def test_get_mid_page_links(self, async_client, collection_route):
-        response = await async_client.get(f"{collection_route}?limit=4")
-        next_link = next(link for link in response.json()["links"] if link["rel"] == "next")
-        response2 = await async_client.get(next_link["href"])
-        links = response2.json()["links"]
-        assert len(links) == 2
-        assert {link["rel"] for link in links} == {"prev", "next"}
-        for link in links:
-            assert link["type"] == "application/json"
-            assert link["href"].startswith(str(response.url))
-            assert parse_qs(urlparse(link["href"]).query).get("limit") == ["4"]
-            if link["rel"] == "prev":
-                assert (id_ := parse_qs(urlparse(link["href"]).query).get("before"))
-            elif link["rel"] == "next":
-                assert (id_ := parse_qs(urlparse(link["href"]).query).get("after"))
-            assert id_ not in [r["id"] for r in response.json()["data_requests"]]
-
-    async def test_next_prev_is_consistent(self, async_client, collection_route):
-        response = await async_client.get(f"{collection_route}?limit=4")
-        # page0 -> page1
-        next_link = next(link for link in response.json()["links"] if link["rel"] == "next")
-        next_response = await async_client.get(next_link["href"])
-        # page0 -> page1 -> page2
-        next_next_link = next(link for link in next_response.json()["links"] if link["rel"] == "next")
-        next_next_response = await async_client.get(next_next_link["href"])
-        # page0 -> page1 -> page0
-        next_prev_link = next(link for link in next_response.json()["links"] if link["rel"] == "prev")
-        next_prev_response = await async_client.get(next_prev_link["href"])
-        # page0 -> page1 -> page2 -> page1
-        next_next_prev_link = next(link for link in next_next_response.json()["links"] if link["rel"] == "prev")
-        next_next_prev_response = await async_client.get(next_next_prev_link["href"])
-        # page0 -> page1 -> page2 -> page1 -> page0
-        next_next_prev_prev_link = next(
-            link for link in next_next_prev_response.json()["links"] if link["rel"] == "prev"
-        )
-        next_next_prev_prev_response = await async_client.get(next_next_prev_prev_link["href"])
-        assert response.json() == next_prev_response.json() == next_next_prev_prev_response.json()
-        assert next_response.json() == next_next_prev_response.json()
-
-    async def test_get_all_same_as_paging_next(self, async_client, collection_route):
-        all_response = await async_client.get(f"{collection_route}?limit={self.n_data_requests}")
-        next_link = [f"{collection_route}?limit=4"]
-        data_requests = []
-        while next_link:
-            response = await async_client.get(next_link[0])
-            data_requests.extend(response.json()["data_requests"])
-            next_link = [link["href"] for link in response.json()["links"] if link["rel"] == "next"]
-        assert all_response.json()["data_requests"] == data_requests
-
 
 @pytest.mark.no_db_cleanup
 class TestGetManyUser(_TestGetMany, _TestUser):
-    n_data_requests_return_count = _TestGetMany.n_data_requests // 2
+    n_records_return_count = _TestGetMany.n_records // 2
 
     async def test_get_all(self, async_client, collection_route):
-        response = await async_client.get(f"{collection_route}?limit={self.n_data_requests}")
-        assert len(response.json()["data_requests"]) == self.n_data_requests // 2
+        response = await assert_db_not_changed(
+            async_client.get(f"{collection_route}?limit={self.n_records}"), self.collection_name
+        )
+        assert len(response.json()["data_requests"]) == self.n_records // 2
 
 
 @pytest.mark.no_db_cleanup
 class TestGetManyAdmin(_TestGetMany, _TestAdmin):
-    n_data_requests_return_count = _TestGetMany.n_data_requests
+    n_records_return_count = _TestGetMany.n_records
 
     async def test_get_all(self, async_client, collection_route):
-        response = await async_client.get(f"{collection_route}?limit={self.n_data_requests}")
-        assert len(response.json()["data_requests"]) == self.n_data_requests
+        response = await assert_db_not_changed(
+            async_client.get(f"{collection_route}?limit={self.n_records}"), self.collection_name
+        )
+
+        assert len(response.json()["data_requests"]) == self.n_records
 
 
 class _TestPost:
     request_method = "post"
     request_path_type = "collection"
+    collection_name = "data-request"
 
     @pytest.fixture
-    def data_requests(self):
+    def records(self):
         return [{"user": "user1"}]
 
-    async def test_valid(self, fake, async_client, collection_route, data_requests):
+    async def test_valid(self, fake, async_client, collection_route, records):
         data = fake.data_request().model_dump_json(exclude=["user"])
         response = await async_client.post(collection_route, json=json.loads(data))
         assert response.status_code == 200
         response_data = response.json()
         assert (id_ := response_data.pop("id", None))
         bson.ObjectId(id_)  # check that the id is a valid object id
-        compare_no_timestamps({"user": data_requests[0]["user"], **json.loads(data)}, response_data)
+        compare_no_timestamps({"user": records[0]["user"], **json.loads(data)}, response_data)
 
     async def test_invalid_authors(self, fake, async_client, collection_route):
         data = json.loads(fake.data_request().model_dump_json())
         data["authors"] = []
-        response = await async_client.post(collection_route, json=data)
+        response = await assert_db_not_changed(async_client.post(collection_route, json=data), self.collection_name)
         assert response.status_code == 422
 
     async def test_invalid_uncollapsible_geometry(self, fake, async_client, collection_route):
@@ -347,7 +162,7 @@ class _TestPost:
             **json.loads(fake.data_request().model_dump_json()),
             "geometry": json.loads(fake.uncollapsible_geojson().model_dump_json()),
         }
-        response = await async_client.post(collection_route, json=data)
+        response = await assert_db_not_changed(async_client.post(collection_route, json=data), self.collection_name)
         assert response.status_code == 422
 
 
@@ -356,12 +171,13 @@ class TestPostUser(_TestPost, _TestUser): ...
 
 class TestPostAdmin(_TestPost, _TestAdmin):
     @pytest.fixture
-    def collection_route(self, data_requests):
-        return f"/v1/admin/data-requests/?user={data_requests[0]['user']}"
+    def collection_route(self, records):
+        return f"/v1/admin/data-requests/?user={records[0]['user']}"
 
 
 class _TestUpdate:
     request_path_type = "member"
+    collection_name = "data-request"
 
     @pytest.fixture(autouse=True)
     async def loaded_data(self, fake):
@@ -372,12 +188,16 @@ class _TestUpdate:
         return model
 
     @pytest.fixture
-    async def data_requests(self, loaded_data):
+    async def records(self, loaded_data):
         return [{"_id": loaded_data["id"], **loaded_data}]
 
 
-class _TestPatch(_TestUpdate):
+class _TestPatch(_TestUpdate, UpdateTest):
     request_method = "patch"
+
+    @pytest.fixture
+    def valid_update(self):
+        return {"title": "test123"}
 
     async def test_valid(self, loaded_data, async_client, fake, member_route):
         title = fake.sentence()
@@ -396,19 +216,6 @@ class _TestPatch(_TestUpdate):
         loaded_data.update(update)
         compare_no_timestamps(loaded_data, response.json())
 
-    async def test_update_nothing(self, loaded_data, async_client, member_route):
-        response = await async_client.patch(member_route, json={})
-        assert response.status_code == 200
-        compare_no_timestamps(loaded_data, response.json())
-
-    async def test_no_id_update(self, loaded_data, async_client, member_route):
-        update = {"id": str(bson.ObjectId())}
-        response = await async_client.patch(member_route, json=update)
-        assert response.status_code == 200
-        assert response.json()["id"] == loaded_data["id"]
-        assert response.json()["id"] != update["id"]
-        compare_no_timestamps(loaded_data, response.json())
-
     async def test_invalid_unset_value(self, async_client, member_route):
         response = await async_client.patch(member_route, json={"title": None})
         assert response.status_code == 422
@@ -424,31 +231,6 @@ class _TestPatch(_TestUpdate):
         )
         assert response.status_code == 422
 
-    async def test_bad_id(self, async_client, collection_route):
-        resp = await async_client.patch(f"{collection_route}/id-does-not-exist", json={})
-        assert resp.status_code == 404, resp.json()
-
-    async def test_created_in_response(self, fake, async_client, member_route):
-        title = fake.sentence()
-        update = {"title": title}
-        response = await async_client.patch(member_route, json=update)
-        assert response.status_code == 200
-        assert response.json()["created"]
-
-    async def test_updated_updated(self, loaded_data, fake, async_client, member_route):
-        title = fake.sentence()
-        update = {"title": title}
-        response = await async_client.patch(member_route, json=update)
-        assert response.status_code == 200
-        assert loaded_data["updated"] != response.json()["updated"]
-
-    @pytest.mark.parametrize("field", ["created", "updated"])
-    async def test_no_updatable_timestamps(self, loaded_data, async_client, member_route, field):
-        new_date = datetime.datetime.now(tz=datetime.timezone.utc) - datetime.timedelta(days=10)
-        response = await async_client.patch(member_route, json={field: new_date.isoformat()})
-        assert response.status_code == 200
-        assert response.json()[field] != new_date.isoformat()
-
 
 class TestPatchUser(_TestPatch, _TestUser):
     async def test_update_everything(self, loaded_data, async_client, fake, member_route):
@@ -461,7 +243,9 @@ class TestPatchUser(_TestPatch, _TestUser):
 
     async def test_no_update_user(self, loaded_data, async_client, member_route):
         new_user = loaded_data["user"] + "suffix"
-        response = await async_client.patch(member_route, json={"user": new_user})
+        response = await assert_db_not_changed(
+            async_client.patch(member_route, json={"user": new_user}), self.collection_name
+        )
         assert response.status_code == 403
 
 
@@ -484,6 +268,7 @@ class _TestDelete(_TestUpdate):
     request_method = "delete"
 
     async def test_exists(self, loaded_data, async_client, member_route):
+
         response = await async_client.delete(member_route)
         assert response.status_code == 204
         resp = await client.db.get_collection("data-request").find_one({"_id": bson.ObjectId(loaded_data["id"])})
@@ -491,14 +276,14 @@ class _TestDelete(_TestUpdate):
 
     async def test_bad_id(self, async_client, member_route):
         route = "/" + "/".join(member_route.strip("/").split("/")) + "bad-id-suffix"
-        resp = await async_client.delete(route)
+        resp = await assert_db_not_changed(async_client.delete(route), self.collection_name)
         assert resp.status_code == 404
 
 
 class TestDeleteUser(_TestDelete, _TestUser):
     async def test_bad_user(self, loaded_data, async_client, member_route):
         route = f"/v1/users/someotheruser/data-requests/{loaded_data['id']}"
-        response = await async_client.delete(route)
+        response = await assert_db_not_changed(async_client.delete(route), self.collection_name)
         assert response.status_code == 404
 
 
