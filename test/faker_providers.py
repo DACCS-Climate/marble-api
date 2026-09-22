@@ -341,6 +341,7 @@ class SurveyProvider(DatetimeProvider):
             updated=self.generator.tz_aware_date_time_seconds_precision(),
             user=self.generator.profile("username")["username"],
             user_visible=self.generator.pybool(),
+            title=self.generator.pystr(),
             questions=[self.question() for _ in range(self.generator.random.randint(1, 10))],
         )
         if unset:

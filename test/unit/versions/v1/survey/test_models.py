@@ -229,6 +229,10 @@ class _TestSurvey:
         with pytest.raises(ValidationError):
             fake_class(questions=[])
 
+    def test_title_required(self, fake_class):
+        with pytest.raises(ValidationError):
+            fake_class(title="")
+
 
 class TestSurvey(_TestSurvey, _TestMarbleBaseModel):
     @pytest.fixture
