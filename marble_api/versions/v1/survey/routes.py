@@ -112,7 +112,7 @@ async def get_surveys(
     after: str | None = None,
     before: str | None = None,
     limit: Annotated[int, Query(le=100, gt=0)] = 10,
-    sort_by: Literal["id", "created", "updated", "user_visible"] = "id",
+    sort_by: Literal["id", "created", "updated", "user_visible", "title"] = "id",
     ascending: bool = True,
 ) -> SurveysResponse:
     """
