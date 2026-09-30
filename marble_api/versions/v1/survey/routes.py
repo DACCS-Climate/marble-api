@@ -166,6 +166,7 @@ async def post_survey_response(
     try:
         await get_record(_response_collection(), None, user=user, additional_selector={"survey_id": survey_id})
     except HTTPException:
+        survey_response.survey_id = survey_id
         validate_response(survey, survey_response)
         return await post_record(_response_collection(), user, survey_response)
     raise HTTPException(status_code=409, detail="A response already exists for this survey. Use PUT to update instead.")
