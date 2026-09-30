@@ -77,7 +77,7 @@ class _TestGetManySurvey(_TestGetSurvey, GetManyTest):
     n_records = default_link_limit * 2 + 2
     n_records_return_count: int
     records_key = "surveys"
-    sort_keys = ("id", "created", "updated", "user_visible")
+    sort_keys = ("id", "created", "updated", "user_visible", "title")
 
     @pytest.fixture(autouse=True, scope="class")
     @classmethod

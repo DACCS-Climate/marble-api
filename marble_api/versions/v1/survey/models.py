@@ -178,6 +178,7 @@ class Survey(MarbleBaseModel):
     """Survey containing questions."""
 
     user_visible: bool
+    title: str = Field(..., min_length=1)
     questions: list[TextQuestion | ChoiceQuestion] = Field(..., min_length=1)
 
 
