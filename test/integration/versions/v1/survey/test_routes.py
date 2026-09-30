@@ -513,15 +513,13 @@ class _TestDeleteSurveyResponse(_TestUpdateSurveyResponse):
 
 
 class TestPostSurveyResponseUser(_TestPostSurveyResponse, _TestSurveyResponseUser):
-    async def test_response_not_valid(self, loaded_survey, fake, async_client, member_route):
-        response = json.loads(fake.response(for_survey=loaded_survey).model_dump_json())
-        response["answers"] = []
-        resp = await assert_db_not_changed(async_client.post(member_route, json=response), self.collection_name)
+    async def test_response_not_valid(self, async_client, member_route):
+        resp = await assert_db_not_changed(async_client.post(member_route, json={"answers": []}), self.collection_name)
         assert resp.status_code == 422
 
     async def test_response_valid(self, loaded_survey, fake, async_client, member_route, user):
         data = json.loads(fake.response(for_survey=loaded_survey).model_dump_json())
-        resp = await async_client.post(member_route, json=data)
+        resp = await async_client.post(member_route, json={"answers": data["answers"]})
         assert resp.status_code == 200
         response_data = resp.json()
         assert (id_ := response_data.pop("id", None))
@@ -534,10 +532,12 @@ class TestPostSurveyResponseUser(_TestPostSurveyResponse, _TestSurveyResponseUse
 
     async def test_multiple_valid_responses(self, loaded_survey, fake, async_client, member_route):
         data = json.loads(fake.response(for_survey=loaded_survey).model_dump_json())
-        resp = await async_client.post(member_route, json=data)
+        resp = await async_client.post(member_route, json={"answers": data["answers"]})
         assert resp.status_code == 200
         data2 = json.loads(fake.response(for_survey=loaded_survey).model_dump_json())
-        resp = await assert_db_not_changed(async_client.post(member_route, json=data2), self.collection_name)
+        resp = await assert_db_not_changed(
+            async_client.post(member_route, json={"answers": data2["answers"]}), self.collection_name
+        )
         assert resp.status_code == 409
 
 
