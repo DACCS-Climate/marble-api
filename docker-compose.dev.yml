@@ -13,7 +13,7 @@ services:
     ports:
       - 8000:8000
   mongo:
-    image: mongo:5.0.4
+    image: percona/percona-server-mongodb:8.0.4
 
 volumes:
   marble-api-venv:

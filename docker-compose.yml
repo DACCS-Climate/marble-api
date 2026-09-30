@@ -6,4 +6,7 @@ services:
     ports:
       - 8000:8000
   mongo:
-    image: mongo:5.0.4
+    # percona is used instead of mongodb community image because it supports encryption at rest
+    # versions > 8.0.4 are currently incompatible with recent malloc fix from linux kernels > 6.19
+    image: percona/percona-server-mongodb:8.0.4
+

@@ -22,6 +22,6 @@ venv/
 build/
 *.egg-info/
 
-# sqlite files
-*.sqlite
-*.db
+# secrets
+*.key
+*.pem
