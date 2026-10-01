@@ -1,0 +1,5 @@
+services:
+  mongo:
+    volumes:
+      - ${MONGODB_ENCRYPTION_KEY_FILE:?key file required}:/mongo-encrypt-key:ro
+    command: ["mongod", "--enableEncryption", "--encryptionKeyFile", "/mongo-encrypt-key"]

@@ -39,6 +39,24 @@ recommend enabling it with the
 [Marble API component](https://github.com/DACCS-Climate/marble-config/tree/main/components/marble-api). 
 This sets default environment variables that will work with most birdhouse deployments.
 
+## Data Encryption
+
+Marble API supports storing encrypted data at rest in an encrypted mongodb database. In order to enable this
+please configure your mongodb database to enable encryption as described in the
+[documentation](https://www.mongodb.com/docs/manual/tutorial/configure-encryption/).
+
+If managing the mongodb service through docker, see an example configuration in the `docker-compose.encrypt.yml`
+docker compose file. For example:
+
+```sh
+# create a key file
+openssl rand -base64 32 > mongodb.key
+# set appropriate permissions on the file
+chmod 600 mongodb.key
+# start the docker compose project using this key file to encrypt data at rest
+MONGODB_ENCRYPTION_KEY_FILE=./mongodb.key docker compose -f docker-compose.yml -f docker-compose.encrypt.yml up -d
+```
+
 ## Developing
 
 To start a development server:
